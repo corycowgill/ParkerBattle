@@ -1,0 +1,241 @@
+// BattleManager — the in-battle state machine: Launch -> Battle -> Result.
+//
+// It owns the two beys, the stadium, the AI, and the fixed-step simulation
+// loop. The higher-level Game owns menus and hands control here for one match.
+
+import * as THREE from 'three';
+import type { BattleResult, BeyConfig, LaunchParams, Opponent, StadiumConfig } from '../core/types';
+import { BALANCE } from '../data/balance';
+import { bowlSurfaceY } from '../core/arena';
+import { clamp } from '../core/util';
+import type { Physics } from '../engine/Physics';
+import type { Renderer } from '../engine/Renderer';
+import type { Particles } from '../visuals/Particles';
+import type { Audio } from '../audio/Audio';
+import { TYPE_COLOR } from '../visuals/BeyMesh';
+import { Bey } from './Bey';
+import { Stadium } from './Stadium';
+import { AI } from './AI';
+import { resolveClash, type CombatEffects } from './Combat';
+
+export type BattlePhase = 'launch' | 'battle' | 'result';
+
+export interface BattleOptions {
+  playerConfig: BeyConfig;
+  opponent: Opponent;
+  enemyConfig: BeyConfig;
+  stadium: StadiumConfig;
+  physics: Physics;
+  scene: THREE.Scene;
+  renderer: Renderer;
+  particles: Particles;
+  audio: Audio;
+}
+
+const PLAYER_LAUNCH_ANGLE = Math.PI / 2;
+const ENEMY_LAUNCH_ANGLE = -Math.PI / 2;
+
+export class BattleManager {
+  phase: BattlePhase = 'launch';
+  readonly player: Bey;
+  readonly enemy: Bey;
+  readonly stadium: Stadium;
+  result: BattleResult | null = null;
+
+  /** Fired once, a beat after the match resolves, so the result UI can show. */
+  onResolved?: (result: BattleResult) => void;
+
+  private readonly ai: AI;
+  private readonly fx: CombatEffects;
+  private combatCooldown = 0;
+  private timeLeft = BALANCE.matchTimeLimit;
+  private resultTimer = 0;
+  private resolvedFired = false;
+
+  constructor(private readonly opts: BattleOptions) {
+    this.stadium = new Stadium(opts.stadium, opts.scene);
+    opts.renderer.setAtmosphere(opts.stadium.palette.fog);
+
+    this.player = new Bey('player', opts.playerConfig, opts.physics, opts.scene, 'You');
+    this.enemy = new Bey('enemy', opts.enemyConfig, opts.physics, opts.scene, opts.opponent.name);
+    this.player.placeAtLaunch(PLAYER_LAUNCH_ANGLE);
+    this.enemy.placeAtLaunch(ENEMY_LAUNCH_ANGLE);
+
+    this.ai = new AI(this.enemy, this.player, opts.opponent.difficulty);
+
+    this.fx = {
+      spark: (x, y, z, i, color) =>
+        opts.particles.emit(x, y, z, {
+          count: 8 + Math.floor(i * 24),
+          color,
+          speed: 6 + i * 13,
+          spread: 1.4,
+          life: 0.45 + i * 0.35,
+          rise: 1.6,
+          drag: 3.2,
+        }),
+      shake: (a) => opts.renderer.addShake(a),
+      clash: (i) => opts.audio.clash(i),
+    };
+
+    opts.audio.startHum();
+  }
+
+  get timeRemaining(): number {
+    return Math.max(0, this.timeLeft);
+  }
+
+  // --- Player input ------------------------------------------------------
+
+  /** Called by the launch mini-game when the player releases. */
+  launchPlayer(params: LaunchParams): void {
+    if (this.phase !== 'launch') return;
+    this.player.launch(params.power, params.angle);
+    const enemyLaunch = this.ai.chooseLaunch();
+    this.enemy.launch(enemyLaunch.power, enemyLaunch.angle);
+    this.phase = 'battle';
+    this.opts.audio.launch(params.power);
+  }
+
+  /** Returns true if the Special actually fired. */
+  triggerPlayerSpecial(): boolean {
+    if (this.phase !== 'battle' || !this.player.triggerSpecial()) return false;
+    this.opts.audio.special();
+    const t = this.player.body.translation();
+    this.opts.particles.emit(t.x, bowlSurfaceY(this.player.radius) + 0.7, t.z, {
+      count: 30,
+      color: TYPE_COLOR[this.player.stats.type],
+      speed: 9,
+      spread: 1.5,
+      life: 0.7,
+      rise: 2.5,
+      drag: 2.4,
+    });
+    return true;
+  }
+
+  // --- Fixed-step simulation --------------------------------------------
+
+  fixedUpdate(dt: number): void {
+    if (this.phase === 'launch') return;
+
+    const playerWasAlive = this.player.alive;
+    const enemyWasAlive = this.enemy.alive;
+    const cfg = this.stadium.config;
+
+    this.player.fixedUpdate(dt, this.enemy, cfg);
+    this.enemy.fixedUpdate(dt, this.player, cfg);
+    if (this.phase === 'battle') this.ai.update(dt);
+
+    this.player.recordVelocity();
+    this.enemy.recordVelocity();
+    const contacts = this.opts.physics.step(dt);
+
+    this.combatCooldown = Math.max(0, this.combatCooldown - dt);
+    for (const c of contacts) {
+      if (!c.started) continue;
+      const isPair =
+        (c.handleA === this.player.handle && c.handleB === this.enemy.handle) ||
+        (c.handleA === this.enemy.handle && c.handleB === this.player.handle);
+      if (isPair && this.combatCooldown <= 0 && this.phase === 'battle') {
+        resolveClash(this.player, this.enemy, cfg, this.fx);
+        this.combatCooldown = BALANCE.collisionCooldown;
+      }
+    }
+
+    this.player.postStep(dt);
+    this.enemy.postStep(dt);
+
+    if (playerWasAlive && !this.player.alive) this.onDeath(this.player);
+    if (enemyWasAlive && !this.enemy.alive) this.onDeath(this.enemy);
+
+    if (this.phase === 'battle') {
+      this.timeLeft -= dt;
+      if (!this.player.alive || !this.enemy.alive) {
+        this.finish(!this.enemy.alive && this.player.alive);
+      } else if (this.timeLeft <= 0) {
+        this.finishByTime();
+      }
+    } else if (this.phase === 'result') {
+      this.resultTimer -= dt;
+      if (this.resultTimer <= 0 && !this.resolvedFired && this.result) {
+        this.resolvedFired = true;
+        this.onResolved?.(this.result);
+      }
+    }
+  }
+
+  private onDeath(bey: Bey): void {
+    const t = bey.body.translation();
+    const y = bowlSurfaceY(bey.radius) + 0.6;
+    const { particles, renderer, audio } = this.opts;
+    if (bey.lossReason === 'burst') {
+      audio.burst();
+      renderer.addShake(0.55);
+      particles.emit(t.x, y, t.z, { count: 96, color: 0xffffff, speed: 15, spread: 1.4, life: 1.1, rise: 3.5, drag: 1.7 });
+      particles.emit(t.x, y, t.z, {
+        count: 60, color: TYPE_COLOR[bey.stats.type], speed: 10, spread: 1.5, life: 1.4, rise: 2, drag: 1.9,
+      });
+    } else if (bey.lossReason === 'ring-out') {
+      audio.clash(0.7);
+      renderer.addShake(0.32);
+      particles.emit(t.x, y, t.z, { count: 28, color: 0xc8d4ff, speed: 8, spread: 1.2, life: 0.7, rise: 1, drag: 2.6 });
+    } else {
+      renderer.addShake(0.16);
+    }
+  }
+
+  private finishByTime(): void {
+    // Sudden survivor — whoever has the most spin left wins.
+    const playerWon = this.player.stamina >= this.enemy.stamina;
+    (playerWon ? this.enemy : this.player).forfeit();
+    this.finish(playerWon);
+  }
+
+  private finish(playerWon: boolean): void {
+    if (this.phase === 'result') return;
+    this.phase = 'result';
+    this.resultTimer = 2.3;
+    const loser = playerWon ? this.enemy : this.player;
+    this.result = { playerWon, reason: loser.lossReason, winReason: loser.lossReason };
+    this.opts.audio.setHum(0);
+    if (playerWon) this.opts.audio.win();
+    else this.opts.audio.lose();
+  }
+
+  // --- Per-frame visual sync --------------------------------------------
+
+  renderSync(dt: number, time: number): void {
+    this.stadium.update(dt, time);
+    this.player.renderSync(dt, time);
+    this.enemy.renderSync(dt, time);
+    this.opts.particles.update(dt);
+
+    if (this.phase === 'battle') {
+      const energy = clamp((this.player.speed + this.enemy.speed) / 28, 0, 1);
+      this.opts.audio.setHum(0.4 + energy * 0.6);
+      this.emitTrail(this.player);
+      this.emitTrail(this.enemy);
+    }
+  }
+
+  private emitTrail(bey: Bey): void {
+    if (!bey.alive || bey.speed < 6.5 || Math.random() > 0.4) return;
+    const t = bey.body.translation();
+    this.opts.particles.emit(t.x, bowlSurfaceY(bey.radius) + 0.2, t.z, {
+      count: 1,
+      color: TYPE_COLOR[bey.stats.type],
+      speed: 1.2,
+      spread: 1.2,
+      life: 0.4,
+      drag: 2,
+    });
+  }
+
+  dispose(): void {
+    this.opts.audio.stopHum();
+    this.player.dispose();
+    this.enemy.dispose();
+    this.stadium.dispose();
+  }
+}
