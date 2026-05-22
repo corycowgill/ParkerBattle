@@ -702,6 +702,55 @@ body {
   to { opacity: 0; }
 }
 
+/* --- Garage part stage --------------------------------------------------- */
+
+.part-stage {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, 92%);
+  height: 32vh;
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 36%, rgba(44, 58, 116, 0.62), rgba(8, 10, 20, 0.94));
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6), inset 0 0 46px rgba(95, 123, 255, 0.14);
+  animation: screenIn 0.4s ease;
+}
+
+.ps-label {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  padding: 9px 6px 0;
+  text-shadow: 0 0 14px rgba(47, 243, 214, 0.5);
+}
+
+.ps-canvas {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.ps-canvas canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.screen.garage {
+  justify-content: flex-start;
+  padding-top: calc(32vh + 26px + env(safe-area-inset-top));
+}
+
 /* --- Misc ---------------------------------------------------------------- */
 
 .corner-btn {

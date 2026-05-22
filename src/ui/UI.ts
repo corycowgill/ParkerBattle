@@ -83,6 +83,9 @@ export class UI {
   private readonly muteBtn: HTMLButtonElement;
   private readonly introEl: HTMLElement;
   private readonly flashEl: HTMLElement;
+  private readonly partStage: HTMLElement;
+  private readonly partStageMount: HTMLElement;
+  private readonly partStageLabel: HTMLElement;
 
   // Cached HUD nodes (mutated each frame).
   private hudNodes!: {
@@ -106,7 +109,7 @@ export class UI {
     this.screens = {
       title: el('div', 'screen hidden'),
       menu: el('div', 'screen hidden'),
-      garage: el('div', 'screen hidden'),
+      garage: el('div', 'screen garage hidden'),
       ladder: el('div', 'screen hidden'),
       result: el('div', 'screen hidden'),
     };
@@ -116,6 +119,12 @@ export class UI {
     this.muteBtn = el('button', 'btn corner-btn hidden', 'SOUND ON');
     this.introEl = el('div', 'intro hidden');
     this.flashEl = el('div', 'screen-flash');
+
+    this.partStage = el('div', 'part-stage hidden');
+    this.partStageLabel = el('div', 'ps-label', '');
+    this.partStageMount = el('div', 'ps-canvas');
+    this.partStage.appendChild(this.partStageLabel);
+    this.partStage.appendChild(this.partStageMount);
   }
 
   init(cb: UICallbacks): void {
@@ -125,11 +134,25 @@ export class UI {
     this.buildLaunchPanel();
     this.root.appendChild(this.hud);
     this.root.appendChild(this.launchPanel);
+    this.root.appendChild(this.partStage);
     this.root.appendChild(this.introEl);
     this.root.appendChild(this.flashEl);
     this.root.appendChild(this.toastEl);
     this.root.appendChild(this.muteBtn);
     this.muteBtn.addEventListener('click', () => this.cb.onToggleMute());
+  }
+
+  /** Mount point for the Garage's dedicated part-viewer canvas. */
+  getPartStageMount(): HTMLElement {
+    return this.partStageMount;
+  }
+
+  setPartStageVisible(v: boolean): void {
+    this.partStage.classList.toggle('hidden', !v);
+  }
+
+  setPartStageLabel(text: string): void {
+    this.partStageLabel.textContent = text;
   }
 
   // --- Screen switching --------------------------------------------------
@@ -194,8 +217,7 @@ export class UI {
   renderGarage(progression: Progression, draft: BeyConfig): void {
     const s = this.screens.garage;
     s.innerHTML = '';
-    s.appendChild(el('div', 'logo', 'GARAGE'));
-    s.style.justifyContent = 'flex-start';
+    s.appendChild(el('div', 'tagline', 'Customize Your Bey'));
 
     const stats = computeStats(draft);
     const statPanel = el('div', 'panel');

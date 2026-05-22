@@ -17,7 +17,8 @@ import { Stadium } from '../systems/Stadium';
 import { BattleManager } from '../systems/BattleManager';
 import { LaunchController } from './LaunchController';
 import { UI, type HudState, type UICallbacks } from '../ui/UI';
-import { buildBey, buildPartVisual } from '../visuals/BeyMesh';
+import { buildBey } from '../visuals/BeyMesh';
+import { PartViewer } from '../visuals/PartViewer';
 import { getDisc, getDriver, getLayer, getPart } from '../data/parts';
 import { getStadium, STADIUMS } from '../data/stadiums';
 import { LADDER } from '../data/ladder';
@@ -48,12 +49,14 @@ export class Game {
   private physics!: Physics;
   private particles!: Particles;
   private launch!: LaunchController;
+  private partViewer!: PartViewer;
 
   private mode: Mode = 'menu';
   private battle: BattleManager | null = null;
   private opponentIndex = 0;
   private introActive = false;
   private introTimer = 0;
+  private inGarage = false;
 
   private menuStadium: Stadium | null = null;
   private preview: Preview | null = null;
@@ -82,8 +85,10 @@ export class Game {
     this.particles = new Particles();
     this.renderer.scene.add(this.particles.points);
     this.launch = new LaunchController(this.renderer.scene);
+    this.partViewer = new PartViewer();
 
     this.wireUI();
+    this.ui.getPartStageMount().appendChild(this.partViewer.canvas);
     this.wireInput();
 
     this.enterMenuScene(this.progression.equipped);
@@ -131,6 +136,7 @@ export class Game {
       this.renderer.setAzimuth(Math.sin(this.clock * 0.16) * 0.5);
       this.menuStadium?.update(dt, this.clock);
       this.spinPreview(dt);
+      if (this.inGarage) this.partViewer.render(dt);
     } else if (this.battle) {
       if (this.introActive) {
         this.introTimer -= dt;
@@ -191,8 +197,8 @@ export class Game {
         this.ui.renderGarage(this.progression, this.garageDraft);
         const part = getPart(id);
         if (part) {
-          this.showPartPreview(part);
-          this.ui.toast(`Previewing ${part.name}`);
+          this.partViewer.showPart(part);
+          this.ui.setPartStageLabel(this.partLabel(part));
         }
       },
       onBuyPart: (id) => {
@@ -202,7 +208,8 @@ export class Game {
           this.audio.special();
           this.ui.toast(`${part.name} unlocked!`);
           this.applyPartToDraft(id);
-          this.showPartPreview(part);
+          this.partViewer.showPart(part);
+          this.ui.setPartStageLabel(this.partLabel(part));
         } else {
           this.ui.toast('Not enough coins');
         }
@@ -210,8 +217,8 @@ export class Game {
       },
       onViewFullBey: () => {
         this.audio.click();
-        this.showBeyPreview(this.garageDraft);
-        this.ui.toast('Full bey');
+        this.partViewer.showBey(this.garageDraft);
+        this.ui.setPartStageLabel('FULL BEY');
       },
       onEquipDone: () => {
         this.audio.click();
@@ -292,29 +299,12 @@ export class Game {
     this.preview = { root: v.root, spinNode: v.spinner, accent: v.accent, dispose: () => v.dispose() };
   }
 
-  /** Spotlight a single part — its own distinct procedural design. */
-  private showPartPreview(part: Part): void {
-    this.clearPreview();
-    const pv = buildPartVisual(part);
-    pv.object.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(pv.object);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    pv.object.position.sub(center);
-
-    const holder = new THREE.Group();
-    holder.add(pv.object);
-    holder.position.set(0, 3.2, 0);
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    holder.scale.setScalar(4.4 / maxDim);
-    this.renderer.scene.add(holder);
-    this.preview = { root: holder, spinNode: holder, accent: null, dispose: () => pv.dispose() };
-  }
-
   // --- Screen transitions ------------------------------------------------
 
   private goMenu(): void {
     this.mode = 'menu';
+    this.inGarage = false;
+    this.ui.setPartStageVisible(false);
     this.enterMenuScene(this.progression.equipped);
     this.ui.renderMenu(this.progression);
     this.ui.showScreen('menu');
@@ -328,13 +318,25 @@ export class Game {
     this.enterMenuScene(this.garageDraft);
     this.ui.renderGarage(this.progression, this.garageDraft);
     this.ui.showScreen('garage');
+    this.inGarage = true;
+    this.partViewer.showBey(this.garageDraft);
+    this.ui.setPartStageLabel('FULL BEY');
+    this.ui.setPartStageVisible(true);
   }
 
   private goLadder(): void {
     this.mode = 'menu';
+    this.inGarage = false;
+    this.ui.setPartStageVisible(false);
     this.enterMenuScene(this.progression.equipped);
     this.ui.renderLadder(this.progression);
     this.ui.showScreen('ladder');
+  }
+
+  private partLabel(part: Part): string {
+    const kind =
+      part.kind === 'layer' ? 'ENERGY LAYER' : part.kind === 'disc' ? 'FORGE DISC' : 'DRIVER';
+    return `${kind} · ${part.name}`;
   }
 
   private applyPartToDraft(id: string): void {
@@ -351,6 +353,8 @@ export class Game {
     const opponent = LADDER[index];
     if (!opponent) return;
     this.opponentIndex = index;
+    this.inGarage = false;
+    this.ui.setPartStageVisible(false);
     this.teardownMenuScene();
 
     this.battle = new BattleManager({
