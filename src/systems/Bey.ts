@@ -356,6 +356,8 @@ export class Bey {
       root.rotation.set(0, 0, 0);
       this.visual.spinner.rotation.y += dt * 6 * this.spinSign;
       this.shadow.visible = false;
+      this.visual.auraMat.opacity = 0.4 + Math.sin(time * 3) * 0.08;
+      this.visual.aura.scale.setScalar(2.5);
       return;
     }
 
@@ -401,10 +403,22 @@ export class Bey {
     this.shadowMat.opacity = 0.34 * shrink;
 
     // Accent glow — brighter while spinning fast or special is active.
-    let glow = lerp(0.35, 1.7, clamp(this.stamina / this.stats.maxStamina, 0, 1));
-    if (this.specialActive) glow += 1.3 + Math.sin(time * 22) * 0.5;
+    const spinE = clamp(this.stamina / this.stats.maxStamina, 0, 1);
+    let glow = lerp(0.35, 2.1, spinE);
+    if (this.specialActive) glow += 1.6 + Math.sin(time * 22) * 0.6;
     if (!this.alive) glow *= 0.3;
     this.visual.accent.emissiveIntensity = glow;
+
+    // Spinning-energy aura — pulses with spin speed + Special.
+    const speedE = clamp(this.speed / 12, 0, 1);
+    let auraOpacity = this.alive ? 0.22 + spinE * 0.34 + speedE * 0.32 : 0.06;
+    let auraScale = 2.15 + speedE * 1.5;
+    if (this.specialActive) {
+      auraOpacity = Math.min(1, auraOpacity * 1.7);
+      auraScale += 0.9;
+    }
+    this.visual.auraMat.opacity = auraOpacity;
+    this.visual.aura.scale.setScalar(auraScale);
   }
 
   private updateDebris(dt: number): void {

@@ -18,6 +18,10 @@ export interface CombatEffects {
   shake(amount: number): void;
   /** Play the clash sound. */
   clash(intensity: number): void;
+  /** Spawn an expanding shockwave ring. */
+  shockwave(x: number, y: number, z: number, intensity: number): void;
+  /** Drama hook — combo tracking, callouts, hit-stop, camera punch. */
+  onHit(impact: number, x: number, z: number): void;
 }
 
 function damage(attacker: Bey, defender: Bey, stadium: StadiumConfig, impact: number): number {
@@ -75,8 +79,10 @@ export function resolveClash(a: Bey, b: Bey, stadium: StadiumConfig, fx: CombatE
   const intensity = clamp(impact / 22, 0.16, 1);
   const mx = (ta.x + tb.x) / 2;
   const mz = (ta.z + tb.z) / 2;
-  const my = bowlSurfaceY(Math.hypot(mx, mz)) + 0.65;
-  fx.spark(mx, my, mz, intensity, 0xffe27a);
+  const surfaceY = bowlSurfaceY(Math.hypot(mx, mz));
+  fx.spark(mx, surfaceY + 0.65, mz, intensity, 0xffe27a);
   fx.clash(intensity);
   fx.shake(intensity * 0.5);
+  fx.shockwave(mx, surfaceY + 0.12, mz, intensity);
+  fx.onHit(impact, mx, mz);
 }

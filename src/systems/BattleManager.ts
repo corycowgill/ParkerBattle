@@ -1,17 +1,19 @@
 // BattleManager — the in-battle state machine: Launch -> Battle -> Result.
 //
 // It owns the two beys, the stadium, the AI, and the fixed-step simulation
-// loop. The higher-level Game owns menus and hands control here for one match.
+// loop, plus the "feel" layer: shockwaves, combo tracking, hit-stop freeze
+// frames, camera punch, and dramatic callouts.
 
-import * as THREE from 'three';
 import type { BattleResult, BeyConfig, LaunchParams, Opponent, StadiumConfig } from '../core/types';
 import { BALANCE } from '../data/balance';
 import { bowlSurfaceY } from '../core/arena';
 import { clamp } from '../core/util';
+import type * as THREE from 'three';
 import type { Physics } from '../engine/Physics';
 import type { Renderer } from '../engine/Renderer';
 import type { Particles } from '../visuals/Particles';
 import type { Audio } from '../audio/Audio';
+import { Effects } from '../visuals/Effects';
 import { TYPE_COLOR } from '../visuals/BeyMesh';
 import { Bey } from './Bey';
 import { Stadium } from './Stadium';
@@ -19,6 +21,8 @@ import { AI } from './AI';
 import { resolveClash, type CombatEffects } from './Combat';
 
 export type BattlePhase = 'launch' | 'battle' | 'result';
+
+export type CalloutKind = 'big' | 'crit' | 'combo' | 'burst' | 'win' | 'lose';
 
 export interface BattleOptions {
   playerConfig: BeyConfig;
@@ -44,17 +48,25 @@ export class BattleManager {
 
   /** Fired once, a beat after the match resolves, so the result UI can show. */
   onResolved?: (result: BattleResult) => void;
+  /** Fired for every dramatic callout (combo, smash, burst finish, ...). */
+  onCallout?: (text: string, kind: CalloutKind) => void;
 
   private readonly ai: AI;
   private readonly fx: CombatEffects;
+  private readonly effects = new Effects();
   private combatCooldown = 0;
   private timeLeft = BALANCE.matchTimeLimit;
   private resultTimer = 0;
   private resolvedFired = false;
 
+  private hitStop = 0;
+  private comboCount = 0;
+  private comboTimer = 0;
+
   constructor(private readonly opts: BattleOptions) {
     this.stadium = new Stadium(opts.stadium, opts.scene);
     opts.renderer.setAtmosphere(opts.stadium.palette.fog);
+    opts.scene.add(this.effects.group);
 
     this.player = new Bey('player', opts.playerConfig, opts.physics, opts.scene, 'You');
     this.enemy = new Bey('enemy', opts.enemyConfig, opts.physics, opts.scene, opts.opponent.name);
@@ -66,16 +78,19 @@ export class BattleManager {
     this.fx = {
       spark: (x, y, z, i, color) =>
         opts.particles.emit(x, y, z, {
-          count: 8 + Math.floor(i * 24),
+          count: 12 + Math.floor(i * 34),
           color,
-          speed: 6 + i * 13,
-          spread: 1.4,
-          life: 0.45 + i * 0.35,
-          rise: 1.6,
-          drag: 3.2,
+          speed: 7 + i * 16,
+          spread: 1.5,
+          life: 0.45 + i * 0.4,
+          rise: 1.8,
+          drag: 3.0,
         }),
       shake: (a) => opts.renderer.addShake(a),
       clash: (i) => opts.audio.clash(i),
+      shockwave: (x, y, z, i) =>
+        this.effects.shockwave(x, y, z, 0xffe27a, 2.6 + i * 7),
+      onHit: (impact) => this.onHit(impact),
     };
 
     opts.audio.startHum();
@@ -83,6 +98,10 @@ export class BattleManager {
 
   get timeRemaining(): number {
     return Math.max(0, this.timeLeft);
+  }
+
+  private callout(text: string, kind: CalloutKind): void {
+    this.onCallout?.(text, kind);
   }
 
   // --- Player input ------------------------------------------------------
@@ -94,7 +113,22 @@ export class BattleManager {
     const enemyLaunch = this.ai.chooseLaunch();
     this.enemy.launch(enemyLaunch.power, enemyLaunch.angle);
     this.phase = 'battle';
+
     this.opts.audio.launch(params.power);
+    this.callout('LET IT RIP!', 'big');
+    this.opts.renderer.punch(0.36);
+    for (const bey of [this.player, this.enemy]) {
+      const t = bey.body.translation();
+      this.opts.particles.emit(t.x, bowlSurfaceY(bey.radius) + 0.5, t.z, {
+        count: 26,
+        color: TYPE_COLOR[bey.stats.type],
+        speed: 13,
+        spread: 0.7,
+        life: 0.55,
+        rise: 1.5,
+        drag: 2.6,
+      });
+    }
   }
 
   /** Returns true if the Special actually fired. */
@@ -102,22 +136,54 @@ export class BattleManager {
     if (this.phase !== 'battle' || !this.player.triggerSpecial()) return false;
     this.opts.audio.special();
     const t = this.player.body.translation();
-    this.opts.particles.emit(t.x, bowlSurfaceY(this.player.radius) + 0.7, t.z, {
-      count: 30,
+    const y = bowlSurfaceY(this.player.radius);
+    this.effects.shockwave(t.x, y + 0.15, t.z, TYPE_COLOR[this.player.stats.type], 7, 0.5);
+    this.opts.particles.emit(t.x, y + 0.7, t.z, {
+      count: 36,
       color: TYPE_COLOR[this.player.stats.type],
-      speed: 9,
-      spread: 1.5,
-      life: 0.7,
-      rise: 2.5,
-      drag: 2.4,
+      speed: 10,
+      spread: 1.6,
+      life: 0.75,
+      rise: 2.6,
+      drag: 2.2,
     });
+    this.opts.renderer.punch(0.22);
     return true;
+  }
+
+  private onHit(impact: number): void {
+    this.comboTimer = 1.3;
+    this.comboCount += 1;
+    if (this.comboCount >= 3) {
+      this.callout(`${this.comboCount} HIT COMBO`, 'combo');
+    } else if (impact > 21) {
+      this.callout('CRITICAL!', 'crit');
+    } else if (impact > 13) {
+      this.callout('SMASH!', 'big');
+    }
+    if (impact > 21) {
+      this.hitStop = Math.max(this.hitStop, 0.1);
+      this.opts.renderer.punch(0.5);
+    } else if (impact > 13) {
+      this.hitStop = Math.max(this.hitStop, 0.06);
+      this.opts.renderer.punch(0.28);
+    }
   }
 
   // --- Fixed-step simulation --------------------------------------------
 
   fixedUpdate(dt: number): void {
     if (this.phase === 'launch') return;
+
+    // Hit-stop: a brief freeze frame to sell heavy impacts.
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+      return;
+    }
+    if (this.comboTimer > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) this.comboCount = 0;
+    }
 
     const playerWasAlive = this.player.alive;
     const enemyWasAlive = this.enemy.alive;
@@ -169,24 +235,31 @@ export class BattleManager {
     const t = bey.body.translation();
     const y = bowlSurfaceY(bey.radius) + 0.6;
     const { particles, renderer, audio } = this.opts;
+    const color = TYPE_COLOR[bey.stats.type];
     if (bey.lossReason === 'burst') {
       audio.burst();
       renderer.addShake(0.55);
-      particles.emit(t.x, y, t.z, { count: 96, color: 0xffffff, speed: 15, spread: 1.4, life: 1.1, rise: 3.5, drag: 1.7 });
-      particles.emit(t.x, y, t.z, {
-        count: 60, color: TYPE_COLOR[bey.stats.type], speed: 10, spread: 1.5, life: 1.4, rise: 2, drag: 1.9,
-      });
+      renderer.punch(0.8);
+      this.hitStop = Math.max(this.hitStop, 0.24);
+      this.effects.blast(t.x, y, t.z, color);
+      this.callout('BURST FINISH!!', 'burst');
+      particles.emit(t.x, y, t.z, { count: 110, color: 0xffffff, speed: 16, spread: 1.4, life: 1.1, rise: 4, drag: 1.6 });
+      particles.emit(t.x, y, t.z, { count: 70, color, speed: 11, spread: 1.5, life: 1.5, rise: 2.4, drag: 1.8 });
     } else if (bey.lossReason === 'ring-out') {
-      audio.clash(0.7);
-      renderer.addShake(0.32);
-      particles.emit(t.x, y, t.z, { count: 28, color: 0xc8d4ff, speed: 8, spread: 1.2, life: 0.7, rise: 1, drag: 2.6 });
+      audio.clash(0.8);
+      renderer.addShake(0.36);
+      renderer.punch(0.42);
+      this.effects.shockwave(t.x, y - 0.4, t.z, color, 9, 0.55);
+      this.callout('RING-OUT!', 'big');
+      particles.emit(t.x, y, t.z, { count: 36, color: 0xc8d4ff, speed: 9, spread: 1.2, life: 0.7, rise: 1, drag: 2.5 });
     } else {
-      renderer.addShake(0.16);
+      renderer.addShake(0.18);
+      this.effects.shockwave(t.x, y - 0.4, t.z, color, 6, 0.6);
+      this.callout('SPIN FINISH', 'big');
     }
   }
 
   private finishByTime(): void {
-    // Sudden survivor — whoever has the most spin left wins.
     const playerWon = this.player.stamina >= this.enemy.stamina;
     (playerWon ? this.enemy : this.player).forfeit();
     this.finish(playerWon);
@@ -195,12 +268,17 @@ export class BattleManager {
   private finish(playerWon: boolean): void {
     if (this.phase === 'result') return;
     this.phase = 'result';
-    this.resultTimer = 2.3;
+    this.resultTimer = 2.4;
     const loser = playerWon ? this.enemy : this.player;
     this.result = { playerWon, reason: loser.lossReason, winReason: loser.lossReason };
     this.opts.audio.setHum(0);
-    if (playerWon) this.opts.audio.win();
-    else this.opts.audio.lose();
+    if (playerWon) {
+      this.opts.audio.win();
+      this.callout('VICTORY!', 'win');
+    } else {
+      this.opts.audio.lose();
+      this.callout('DEFEAT', 'lose');
+    }
   }
 
   // --- Per-frame visual sync --------------------------------------------
@@ -210,6 +288,7 @@ export class BattleManager {
     this.player.renderSync(dt, time);
     this.enemy.renderSync(dt, time);
     this.opts.particles.update(dt);
+    this.effects.update(dt);
 
     if (this.phase === 'battle') {
       const energy = clamp((this.player.speed + this.enemy.speed) / 28, 0, 1);
@@ -220,14 +299,14 @@ export class BattleManager {
   }
 
   private emitTrail(bey: Bey): void {
-    if (!bey.alive || bey.speed < 6.5 || Math.random() > 0.4) return;
+    if (!bey.alive || bey.speed < 6.5 || Math.random() > 0.5) return;
     const t = bey.body.translation();
-    this.opts.particles.emit(t.x, bowlSurfaceY(bey.radius) + 0.2, t.z, {
-      count: 1,
+    this.opts.particles.emit(t.x, bowlSurfaceY(bey.radius) + 0.22, t.z, {
+      count: 2,
       color: TYPE_COLOR[bey.stats.type],
-      speed: 1.2,
-      spread: 1.2,
-      life: 0.4,
+      speed: 1.4,
+      spread: 1.3,
+      life: 0.45,
       drag: 2,
     });
   }
@@ -237,5 +316,6 @@ export class BattleManager {
     this.player.dispose();
     this.enemy.dispose();
     this.stadium.dispose();
+    this.effects.dispose();
   }
 }

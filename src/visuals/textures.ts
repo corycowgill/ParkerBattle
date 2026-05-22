@@ -141,6 +141,21 @@ export function makeRockTexture(base: string): THREE.Texture {
   return tex;
 }
 
+/** Soft glowing halo for the spinning-energy aura under each bey. */
+export function makeAuraTexture(): THREE.Texture {
+  const { c, ctx } = canvas(128);
+  const g = ctx.createRadialGradient(64, 64, 6, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.7, 'rgba(255,255,255,0.18)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 /** Energy-layer decal — concentric rings tinted to the part colour. */
 export function makeDecalTexture(color: number): THREE.Texture {
   const { c, ctx } = canvas(128);

@@ -10,18 +10,25 @@ export type StadiumKind = 'smooth' | 'spiked' | 'lava' | 'ice';
 
 export type PartKind = 'layer' | 'disc' | 'driver';
 
+/** Per-part geometry styles — each value gets its own distinct procedural mesh. */
+export type LayerStyle = 'core' | 'blaze' | 'aegis' | 'glide' | 'storm' | 'bastion';
+export type DiscStyle = 'standard' | 'light' | 'heavy' | 'wide';
+export type DriverStyle = 'balance' | 'flat' | 'rubber' | 'ball' | 'guard' | 'needle' | 'orb';
+
 /** Energy Layer — the top ring. Drives attack power and look. */
 export interface EnergyLayer {
   id: string;
   name: string;
   kind: 'layer';
+  /** Distinct procedural silhouette. */
+  style: LayerStyle;
   /** Raw attack stat (~30 weak .. ~90 heavy hitter). */
   attack: number;
   /** Mass contribution, folded into total bey weight. */
   mass: number;
   /** Hex colour of the ring. */
   color: number;
-  /** Number of decorative blades/teeth on the ring (procedural geometry). */
+  /** Number of blades/teeth the silhouette builds. */
   blades: number;
   cost: number;
 }
@@ -31,13 +38,14 @@ export interface ForgeDisc {
   id: string;
   name: string;
   kind: 'disc';
+  /** Distinct procedural silhouette. */
+  style: DiscStyle;
   /** Physical weight (~0.6 light .. ~1.6 heavy). Affects knockback exchange. */
   weight: number;
   /** Stability stat — folded into defence and wobble resistance. */
   stability: number;
   /** Multiplier on stamina drain. <1 spins longer. */
   drainMul: number;
-  shape: 'round' | 'wide' | 'star';
   cost: number;
 }
 
@@ -47,6 +55,8 @@ export interface Driver {
   name: string;
   kind: 'driver';
   type: DriverType;
+  /** Distinct procedural silhouette. */
+  style: DriverStyle;
   /** Multiplier on stamina drain. Attack tips drain fast. */
   drainMul: number;
   /** Multiplier on floor damping. <1 slides, >1 grips. */

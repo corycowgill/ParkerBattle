@@ -19,12 +19,23 @@ export interface UICallbacks {
   onSelectOpponent(index: number): void;
   onPickPart(id: string): void;
   onBuyPart(id: string): void;
+  onViewFullBey(): void;
   onEquipDone(): void;
   onSpecial(): void;
   onContinue(): void;
   onToggleMute(): void;
   onResetSave(): void;
 }
+
+export interface IntroData {
+  playerName: string;
+  playerType: DriverType;
+  enemyName: string;
+  enemyType: DriverType;
+  stadiumName: string;
+}
+
+export type CalloutKind = 'big' | 'crit' | 'combo' | 'burst' | 'win' | 'lose';
 
 export interface HudState {
   playerName: string;
@@ -70,6 +81,8 @@ export class UI {
   private readonly launchPanel: HTMLElement;
   private readonly toastEl: HTMLElement;
   private readonly muteBtn: HTMLButtonElement;
+  private readonly introEl: HTMLElement;
+  private readonly flashEl: HTMLElement;
 
   // Cached HUD nodes (mutated each frame).
   private hudNodes!: {
@@ -101,6 +114,8 @@ export class UI {
     this.launchPanel = el('div', 'launch-panel hidden');
     this.toastEl = el('div', 'toast');
     this.muteBtn = el('button', 'btn corner-btn hidden', 'SOUND ON');
+    this.introEl = el('div', 'intro hidden');
+    this.flashEl = el('div', 'screen-flash');
   }
 
   init(cb: UICallbacks): void {
@@ -110,6 +125,8 @@ export class UI {
     this.buildLaunchPanel();
     this.root.appendChild(this.hud);
     this.root.appendChild(this.launchPanel);
+    this.root.appendChild(this.introEl);
+    this.root.appendChild(this.flashEl);
     this.root.appendChild(this.toastEl);
     this.root.appendChild(this.muteBtn);
     this.muteBtn.addEventListener('click', () => this.cb.onToggleMute());
@@ -131,8 +148,7 @@ export class UI {
     s.innerHTML = '';
     s.appendChild(el('div', 'logo', 'SPIN<br>ARENA'));
     s.appendChild(el('div', 'tagline', 'Beyblade-style top battler'));
-    const start = el('button', 'btn btn-primary', 'TAP TO START');
-    start.style.marginTop = '12px';
+    const start = el('button', 'btn btn-primary tap-start', 'TAP TO START');
     start.addEventListener('click', () => this.cb.onStart());
     s.appendChild(start);
     s.appendChild(el('div', 'hint', 'Choose your bey, master the launch, and read the stadium. Attack beats Stamina beats Defense beats Attack.'));
@@ -193,6 +209,11 @@ export class UI {
       <div class="kv"><span>Coins</span><span class="currency">${progression.currency}</span></div>
     `;
     s.appendChild(statPanel);
+
+    const viewBtn = el('button', 'btn btn-wide', 'VIEW FULL BEY');
+    viewBtn.style.maxWidth = '560px';
+    viewBtn.addEventListener('click', () => this.cb.onViewFullBey());
+    s.appendChild(viewBtn);
 
     const picker = el('div', 'panel');
     picker.appendChild(this.partGroup('Energy Layer', ENERGY_LAYERS, draft.layer, progression));
@@ -436,5 +457,50 @@ export class UI {
 
   setMuted(muted: boolean): void {
     this.muteBtn.textContent = muted ? 'SOUND OFF' : 'SOUND ON';
+  }
+
+  // --- Battle intro / callouts ------------------------------------------
+
+  playIntro(data: IntroData): void {
+    this.introEl.innerHTML = `
+      <div class="intro-cards">
+        <div class="intro-card player">
+          <div class="ic-role">CHALLENGER</div>
+          <div class="ic-name">${data.playerName}</div>
+          ${typeTag(data.playerType)}
+        </div>
+        <div class="intro-vs">VS</div>
+        <div class="intro-card enemy">
+          <div class="ic-role">OPPONENT</div>
+          <div class="ic-name">${data.enemyName}</div>
+          ${typeTag(data.enemyType)}
+        </div>
+      </div>
+      <div class="intro-stadium">${data.stadiumName}</div>`;
+    this.introEl.classList.remove('hidden', 'play');
+    void this.introEl.offsetWidth; // restart entrance animations
+    this.introEl.classList.add('play');
+  }
+
+  hideIntro(): void {
+    this.introEl.classList.add('hidden');
+  }
+
+  /** Spawn a big animated callout (combo, smash, burst finish, ...). */
+  callout(text: string, kind: CalloutKind): void {
+    const node = el('div', `callout callout-${kind}`, text);
+    this.root.appendChild(node);
+    node.addEventListener('animationend', () => node.remove());
+    window.setTimeout(() => node.remove(), 2200);
+    if (kind === 'burst' || kind === 'win') this.flash('rgba(255,214,128,0.8)');
+    else if (kind === 'crit') this.flash('rgba(255,120,90,0.5)');
+  }
+
+  /** Brief full-screen colour flash. */
+  flash(color: string): void {
+    this.flashEl.style.background = color;
+    this.flashEl.classList.remove('show');
+    void this.flashEl.offsetWidth;
+    this.flashEl.classList.add('show');
   }
 }
