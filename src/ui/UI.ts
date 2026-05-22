@@ -525,4 +525,18 @@ export class UI {
     void this.flashEl.offsetWidth;
     this.flashEl.classList.add('show');
   }
+
+  /** Anime-style cut-in stripe for a Special move. */
+  specialBanner(name: string, color: number): void {
+    const hex = '#' + color.toString(16).padStart(6, '0');
+    const node = el('div', 'special-banner', name);
+    node.style.setProperty('--bcolor', hex);
+    this.root.appendChild(node);
+    node.addEventListener('animationend', () => node.remove());
+    window.setTimeout(() => node.remove(), 1900);
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    this.flash(`rgba(${r}, ${g}, ${b}, 0.5)`);
+  }
 }

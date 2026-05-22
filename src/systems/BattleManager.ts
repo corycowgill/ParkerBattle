@@ -60,6 +60,7 @@ export class BattleManager {
   private resolvedFired = false;
 
   private hitStop = 0;
+  private slowMoTimer = 0;
   private comboCount = 0;
   private comboTimer = 0;
 
@@ -90,7 +91,7 @@ export class BattleManager {
       clash: (i) => opts.audio.clash(i),
       shockwave: (x, y, z, i) =>
         this.effects.shockwave(x, y, z, 0xffe27a, 2.6 + i * 7),
-      onHit: (impact) => this.onHit(impact),
+      onHit: (impact, x, z) => this.onHit(impact, x, z),
     };
 
     opts.audio.startHum();
@@ -151,7 +152,7 @@ export class BattleManager {
     return true;
   }
 
-  private onHit(impact: number): void {
+  private onHit(impact: number, x: number, z: number): void {
     this.comboTimer = 1.3;
     this.comboCount += 1;
     if (this.comboCount >= 3) {
@@ -168,6 +169,17 @@ export class BattleManager {
       this.hitStop = Math.max(this.hitStop, 0.06);
       this.opts.renderer.punch(0.28);
     }
+
+    // Lava stadium: every meaningful clash erupts a fire pillar at contact.
+    if (this.stadium.config.kind === 'lava' && impact > 6) {
+      const y = bowlSurfaceY(Math.hypot(x, z));
+      this.opts.particles.emit(x, y + 0.4, z, {
+        count: 22, color: 0xff7a2f, speed: 5, spread: 0.45, life: 0.9, rise: 9, drag: 1.6,
+      });
+      this.opts.particles.emit(x, y + 0.4, z, {
+        count: 14, color: 0xffd24a, speed: 3.4, spread: 0.6, life: 0.7, rise: 7, drag: 1.8,
+      });
+    }
   }
 
   // --- Fixed-step simulation --------------------------------------------
@@ -179,6 +191,11 @@ export class BattleManager {
     if (this.hitStop > 0) {
       this.hitStop -= dt;
       return;
+    }
+    // Slow-mo: after a kill the battle drifts in dramatic 0.32x speed.
+    if (this.slowMoTimer > 0) {
+      this.slowMoTimer -= dt;
+      dt = dt * 0.32;
     }
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
@@ -236,6 +253,8 @@ export class BattleManager {
     const y = bowlSurfaceY(bey.radius) + 0.6;
     const { particles, renderer, audio } = this.opts;
     const color = TYPE_COLOR[bey.stats.type];
+    // Drift into slow-mo for the kill — burst gets the longest beat.
+    this.slowMoTimer = Math.max(this.slowMoTimer, bey.lossReason === 'burst' ? 0.85 : 0.55);
     if (bey.lossReason === 'burst') {
       audio.burst();
       renderer.addShake(0.55);
@@ -269,6 +288,7 @@ export class BattleManager {
     if (this.phase === 'result') return;
     this.phase = 'result';
     this.resultTimer = 2.4;
+    const winner = playerWon ? this.player : this.enemy;
     const loser = playerWon ? this.enemy : this.player;
     this.result = { playerWon, reason: loser.lossReason, winReason: loser.lossReason };
     this.opts.audio.setHum(0);
@@ -279,6 +299,19 @@ export class BattleManager {
       this.opts.audio.lose();
       this.callout('DEFEAT', 'lose');
     }
+
+    // Winner spotlight — a sparkle fountain from the survivor.
+    const wt = winner.body.translation();
+    const wy = bowlSurfaceY(winner.radius);
+    const wcolor = TYPE_COLOR[winner.stats.type];
+    this.effects.shockwave(wt.x, wy + 0.12, wt.z, wcolor, 7, 0.85);
+    this.opts.particles.emit(wt.x, wy + 0.6, wt.z, {
+      count: 60, color: wcolor, speed: 4.5, spread: 0.5, life: 1.6, rise: 7, drag: 1.4,
+    });
+    this.opts.particles.emit(wt.x, wy + 0.6, wt.z, {
+      count: 28, color: 0xffffff, speed: 6, spread: 0.6, life: 1.2, rise: 5.5, drag: 1.5,
+    });
+    this.opts.renderer.punch(0.45);
   }
 
   // --- Per-frame visual sync --------------------------------------------
@@ -289,6 +322,7 @@ export class BattleManager {
     this.enemy.renderSync(dt, time);
     this.opts.particles.update(dt);
     this.effects.update(dt);
+    this.updateArc();
 
     if (this.phase === 'battle') {
       const energy = clamp((this.player.speed + this.enemy.speed) / 28, 0, 1);
@@ -296,6 +330,26 @@ export class BattleManager {
       this.emitTrail(this.player);
       this.emitTrail(this.enemy);
     }
+  }
+
+  /** Energy arc between the two beys when they're nose-to-nose. */
+  private updateArc(): void {
+    if (this.phase !== 'battle' || !this.player.alive || !this.enemy.alive) {
+      this.effects.setArc(0, 0, 0, 0, 0, 0, 0);
+      return;
+    }
+    const pt = this.player.body.translation();
+    const et = this.enemy.body.translation();
+    const d = Math.hypot(pt.x - et.x, pt.z - et.z);
+    const MAX = 5;
+    if (d > MAX) {
+      this.effects.setArc(0, 0, 0, 0, 0, 0, 0);
+      return;
+    }
+    const intensity = 1 - d / MAX;
+    const py = bowlSurfaceY(this.player.radius) + 0.55;
+    const ey = bowlSurfaceY(this.enemy.radius) + 0.55;
+    this.effects.setArc(pt.x, py, pt.z, et.x, ey, et.z, intensity);
   }
 
   private emitTrail(bey: Bey): void {

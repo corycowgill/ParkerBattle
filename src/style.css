@@ -702,6 +702,47 @@ body {
   to { opacity: 0; }
 }
 
+/* --- Special-move cut-in banner ----------------------------------------- */
+
+.special-banner {
+  position: absolute;
+  top: 40%;
+  left: 0;
+  width: 100%;
+  height: 100px;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: clamp(34px, 9vw, 64px);
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 0 36px var(--bcolor, #fff), 0 6px 0 rgba(0, 0, 0, 0.55);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.55) 16%,
+    var(--bcolor, var(--accent)) 32%,
+    var(--bcolor, var(--accent)) 68%,
+    rgba(0, 0, 0, 0.55) 84%,
+    transparent 100%
+  );
+  box-shadow: 0 0 36px var(--bcolor, var(--accent));
+  animation: bannerSwoosh 1.5s cubic-bezier(0.18, 0.7, 0.3, 1) forwards;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+@keyframes bannerSwoosh {
+  0% { transform: translateX(-130%) skewX(-14deg); opacity: 0; }
+  18% { opacity: 1; }
+  50% { transform: translateX(0%) skewX(-14deg); opacity: 1; }
+  82% { opacity: 1; }
+  100% { transform: translateX(130%) skewX(-14deg); opacity: 0; }
+}
+
 /* --- Garage part stage --------------------------------------------------- */
 
 .part-stage {

@@ -1,5 +1,5 @@
-// Expanding shockwave rings — flat additive rings that bloom hard and sell the
-// impact of every clash, ring-out, and burst. A small pooled set, recycled.
+// Expanding shockwave rings + a jagged lightning arc between close beys. Both
+// rendered with additive materials so the bloom pass paints them as energy.
 
 import * as THREE from 'three';
 
@@ -12,12 +12,18 @@ interface Ring {
 }
 
 const POOL = 16;
+const ARC_N = 14;
 
 export class Effects {
   readonly group = new THREE.Group();
   private readonly rings: Ring[] = [];
   private readonly geo: THREE.RingGeometry;
   private cursor = 0;
+
+  private readonly arcLine: THREE.Line;
+  private readonly arcGeo: THREE.BufferGeometry;
+  private readonly arcMat: THREE.LineBasicMaterial;
+  private readonly arcPos: Float32Array;
 
   constructor() {
     this.geo = new THREE.RingGeometry(0.62, 1.0, 44);
@@ -36,6 +42,22 @@ export class Effects {
       this.group.add(mesh);
       this.rings.push({ mesh, mat, life: 0, maxLife: 1, maxScale: 1 });
     }
+
+    // Lightning arc — a jagged additive line regenerated each frame.
+    this.arcPos = new Float32Array((ARC_N + 1) * 3);
+    this.arcGeo = new THREE.BufferGeometry();
+    this.arcGeo.setAttribute('position', new THREE.BufferAttribute(this.arcPos, 3));
+    this.arcMat = new THREE.LineBasicMaterial({
+      color: 0xb4e8ff,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0,
+    });
+    this.arcLine = new THREE.Line(this.arcGeo, this.arcMat);
+    this.arcLine.visible = false;
+    this.arcLine.frustumCulled = false;
+    this.group.add(this.arcLine);
   }
 
   /** Spawn one expanding ring. */
@@ -66,6 +88,43 @@ export class Effects {
     this.shockwave(x, y + 0.4, z, color, 4, 0.74);
   }
 
+  /** Drive the lightning arc between two world points. */
+  setArc(
+    ax: number,
+    ay: number,
+    az: number,
+    bx: number,
+    by: number,
+    bz: number,
+    intensity: number,
+  ): void {
+    if (intensity <= 0.02) {
+      this.arcLine.visible = false;
+      return;
+    }
+    this.arcLine.visible = true;
+    this.arcMat.opacity = 0.45 + intensity * 0.6;
+    const dx = bx - ax;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dz) || 1;
+    const px = -dz / len;
+    const pz = dx / len;
+    const amp = 0.95 * intensity;
+    for (let i = 0; i <= ARC_N; i++) {
+      const t = i / ARC_N;
+      const cx = ax + (bx - ax) * t;
+      const cy = ay + (by - ay) * t;
+      const cz = az + (bz - az) * t;
+      // Zero jitter at the endpoints, peak in the middle.
+      const env = Math.sin(Math.PI * t);
+      const j = env * (Math.random() - 0.5) * amp * 2;
+      this.arcPos[i * 3 + 0] = cx + px * j;
+      this.arcPos[i * 3 + 1] = cy + (Math.random() - 0.5) * env * amp;
+      this.arcPos[i * 3 + 2] = cz + pz * j;
+    }
+    (this.arcGeo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+  }
+
   update(dt: number): void {
     for (const r of this.rings) {
       if (r.life <= 0) continue;
@@ -80,6 +139,8 @@ export class Effects {
   dispose(): void {
     this.geo.dispose();
     for (const r of this.rings) r.mat.dispose();
+    this.arcGeo.dispose();
+    this.arcMat.dispose();
     this.group.removeFromParent();
   }
 }

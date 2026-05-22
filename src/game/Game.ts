@@ -17,7 +17,7 @@ import { Stadium } from '../systems/Stadium';
 import { BattleManager } from '../systems/BattleManager';
 import { LaunchController } from './LaunchController';
 import { UI, type HudState, type UICallbacks } from '../ui/UI';
-import { buildBey } from '../visuals/BeyMesh';
+import { buildBey, TYPE_COLOR } from '../visuals/BeyMesh';
 import { PartViewer } from '../visuals/PartViewer';
 import { getDisc, getDriver, getLayer, getPart } from '../data/parts';
 import { getStadium, STADIUMS } from '../data/stadiums';
@@ -226,7 +226,10 @@ export class Game {
         this.goMenu();
       },
       onSpecial: () => {
-        if (this.battle?.triggerPlayerSpecial()) this.ui.callout('SPECIAL!', 'big');
+        if (this.battle?.triggerPlayerSpecial()) {
+          const type = this.battle.player.stats.type;
+          this.ui.specialBanner(SPECIALS[type].name.toUpperCase(), TYPE_COLOR[type]);
+        }
       },
       onContinue: () => {
         this.audio.click();

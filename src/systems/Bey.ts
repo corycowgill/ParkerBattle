@@ -15,7 +15,8 @@ import { getDriver, getDisc, getLayer } from '../data/parts';
 import { bowlSlopeAngle, bowlSurfaceY } from '../core/arena';
 import { clamp, lerp, rand, remap, TAU } from '../core/util';
 import { computeStats } from './Stats';
-import { buildBey, type BeyVisual } from '../visuals/BeyMesh';
+import { buildBey, TYPE_COLOR, type BeyVisual } from '../visuals/BeyMesh';
+import { TrailRibbon } from '../visuals/TrailRibbon';
 import type { Physics } from '../engine/Physics';
 
 export type BeySide = 'player' | 'enemy';
@@ -69,6 +70,7 @@ export class Bey {
   private readonly physics: Physics;
   private readonly shadow: THREE.Mesh;
   private readonly shadowMat: THREE.MeshBasicMaterial;
+  private readonly trail: TrailRibbon;
   private readonly debris: Debris[] = [];
 
   private readonly impulse = new THREE.Vector2();
@@ -106,6 +108,9 @@ export class Bey {
     this.shadow = new THREE.Mesh(new THREE.CircleGeometry(BALANCE.beyRadius * 1.5, 22), this.shadowMat);
     this.shadow.rotation.x = -Math.PI / 2;
     scene.add(this.shadow);
+
+    this.trail = new TrailRibbon(TYPE_COLOR[this.stats.type], 0.36);
+    scene.add(this.trail.mesh);
   }
 
   // --- Position / motion accessors ---------------------------------------
@@ -168,6 +173,8 @@ export class Bey {
     this.body.setLinvel({ x: Math.cos(angle) * speed, y: 0, z: Math.sin(angle) * speed }, true);
     this.stamina = this.stats.maxStamina - BALANCE.launchWeakPenalty * (1 - clamp(power, 0, 1));
     this.launched = true;
+    const t = this.body.translation();
+    this.trail.reset(t.x, t.z);
   }
 
   // --- Fixed-step simulation --------------------------------------------
@@ -358,6 +365,7 @@ export class Bey {
       this.shadow.visible = false;
       this.visual.auraMat.opacity = 0.4 + Math.sin(time * 3) * 0.08;
       this.visual.aura.scale.setScalar(2.5);
+      this.trail.hide();
       return;
     }
 
@@ -419,6 +427,9 @@ export class Bey {
     }
     this.visual.auraMat.opacity = auraOpacity;
     this.visual.aura.scale.setScalar(auraScale);
+
+    if (this.alive) this.trail.push(t.x, t.z);
+    else this.trail.hide();
   }
 
   private updateDebris(dt: number): void {
@@ -442,10 +453,12 @@ export class Bey {
     this.physics.removeBody(this.body);
     this.scene.remove(this.visual.root);
     this.scene.remove(this.shadow);
+    this.scene.remove(this.trail.mesh);
     for (const d of this.debris) this.scene.remove(d.obj);
     this.debris.length = 0;
     this.visual.dispose();
     this.shadow.geometry.dispose();
     this.shadowMat.dispose();
+    this.trail.dispose();
   }
 }
