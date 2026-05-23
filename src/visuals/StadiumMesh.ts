@@ -134,6 +134,7 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
   const bowlGeo = new THREE.LatheGeometry(bowlProfile(), 72);
   const { mat: bowlMat, map: bowlMap } = bowlMaterial(cfg);
   const bowl = new THREE.Mesh(bowlGeo, bowlMat);
+  bowl.receiveShadow = true;
   group.add(bowl);
   disposables.push(bowlGeo, bowlMat, bowlMap);
 
@@ -178,6 +179,7 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = BALANCE.bowlDepth + 0.18;
+  ground.receiveShadow = true;
   group.add(ground);
   disposables.push(groundGeo, groundMat);
 
@@ -217,12 +219,15 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
     const baseY = BALANCE.bowlDepth + 0.5;
     const base = new THREE.Mesh(pillarBaseGeo, pillarRingMat);
     base.position.set(x, baseY, z);
+    base.castShadow = true;
     group.add(base);
     const trunk = new THREE.Mesh(pillarTrunkGeo, pillarGlowMat);
     trunk.position.set(x, baseY + 2.9, z);
+    trunk.castShadow = true;
     group.add(trunk);
     const cap = new THREE.Mesh(pillarCapGeo, pillarGlowMat);
     cap.position.set(x, baseY + 5.8, z);
+    cap.castShadow = true;
     group.add(cap);
     const beam = new THREE.Mesh(beamGeo, beamMat);
     beam.position.set(x, baseY + 5.8 + 11, z);

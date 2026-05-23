@@ -42,6 +42,8 @@ export class Renderer {
     this.renderer.setPixelRatio(pr);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 240);
 
@@ -58,6 +60,16 @@ export class Renderer {
 
     const key = new THREE.DirectionalLight(0xffffff, 2.0);
     key.position.set(9, 17, 7);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.left = -18;
+    key.shadow.camera.right = 18;
+    key.shadow.camera.top = 18;
+    key.shadow.camera.bottom = -18;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 50;
+    key.shadow.bias = -0.0008;
+    key.shadow.normalBias = 0.05;
     this.scene.add(key);
 
     const rim = new THREE.DirectionalLight(0x6f82ff, 0.8);

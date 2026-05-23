@@ -13,10 +13,11 @@ import type { BeyConfig, BeyStats, Driver, LossReason, StadiumConfig } from '../
 import { BALANCE, SPECIALS } from '../data/balance';
 import { getDriver, getDisc, getLayer } from '../data/parts';
 import { bowlSlopeAngle, bowlSurfaceY } from '../core/arena';
-import { clamp, lerp, rand, remap, TAU } from '../core/util';
+import { clamp, damp, lerp, rand, remap, TAU } from '../core/util';
 import { computeStats } from './Stats';
 import { buildBey, TYPE_COLOR, type BeyVisual } from '../visuals/BeyMesh';
 import { TrailRibbon } from '../visuals/TrailRibbon';
+import { makeLabelTexture } from '../visuals/textures';
 import type { Physics } from '../engine/Physics';
 
 export type BeySide = 'player' | 'enemy';
@@ -71,6 +72,8 @@ export class Bey {
   private readonly shadow: THREE.Mesh;
   private readonly shadowMat: THREE.MeshBasicMaterial;
   private readonly trail: TrailRibbon;
+  private readonly nameplate: THREE.Sprite;
+  private readonly nameplateMat: THREE.SpriteMaterial;
   private readonly debris: Debris[] = [];
 
   private readonly impulse = new THREE.Vector2();
@@ -102,7 +105,7 @@ export class Bey {
     this.shadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
       transparent: true,
-      opacity: 0.34,
+      opacity: 0.2,
       depthWrite: false,
     });
     this.shadow = new THREE.Mesh(new THREE.CircleGeometry(BALANCE.beyRadius * 1.5, 22), this.shadowMat);
@@ -111,6 +114,19 @@ export class Bey {
 
     this.trail = new TrailRibbon(TYPE_COLOR[this.stats.type], 0.36);
     scene.add(this.trail.mesh);
+
+    // Holographic name plate floating above the bey.
+    this.nameplateMat = new THREE.SpriteMaterial({
+      map: makeLabelTexture(label, TYPE_COLOR[this.stats.type]),
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      opacity: 0,
+    });
+    this.nameplate = new THREE.Sprite(this.nameplateMat);
+    this.nameplate.scale.set(2.6, 0.65, 1);
+    this.nameplate.position.y = 2.0;
+    this.visual.root.add(this.nameplate);
   }
 
   // --- Position / motion accessors ---------------------------------------
@@ -365,6 +381,8 @@ export class Bey {
       this.shadow.visible = false;
       this.visual.auraMat.opacity = 0.4 + Math.sin(time * 3) * 0.08;
       this.visual.aura.scale.setScalar(2.5);
+      this.visual.orbiters.visible = false;
+      this.nameplateMat.opacity = 0;
       this.trail.hide();
       return;
     }
@@ -428,6 +446,17 @@ export class Bey {
     this.visual.auraMat.opacity = auraOpacity;
     this.visual.aura.scale.setScalar(auraScale);
 
+    // Orbital sparkle halo — counter-spins relative to the bey body.
+    this.visual.orbiters.visible = this.alive;
+    if (this.alive) {
+      this.visual.orbiters.rotation.y += dt * 2.8 * -this.spinSign;
+      this.visual.orbiters.position.y = Math.sin(time * 2.6 + this.handle) * 0.08;
+    }
+
+    // Holographic name plate fades in while alive.
+    const npTarget = this.alive ? 0.92 : 0;
+    this.nameplateMat.opacity = damp(this.nameplateMat.opacity, npTarget, 6, dt);
+
     if (this.alive) this.trail.push(t.x, t.z);
     else this.trail.hide();
   }
@@ -460,5 +489,7 @@ export class Bey {
     this.shadow.geometry.dispose();
     this.shadowMat.dispose();
     this.trail.dispose();
+    this.nameplateMat.map?.dispose();
+    this.nameplateMat.dispose();
   }
 }

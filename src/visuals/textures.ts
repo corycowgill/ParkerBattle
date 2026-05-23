@@ -288,6 +288,50 @@ export function makeMoteTexture(): THREE.Texture {
   return tex;
 }
 
+/** Holographic name plate texture — used on the floating sprite over each bey. */
+export function makeLabelTexture(text: string, color: number): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 128;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, 512, 128);
+  const hexCol = '#' + color.toString(16).padStart(6, '0');
+
+  // Main text — white with a heavy coloured glow.
+  ctx.font = '700 56px "Orbitron", "Trebuchet MS", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = hexCol;
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(text.toUpperCase(), 256, 56);
+
+  // Underline bar in the accent colour.
+  ctx.shadowBlur = 16;
+  ctx.fillStyle = hexCol;
+  ctx.fillRect(96, 96, 320, 5);
+
+  // Small corner brackets to frame it as a HUD readout.
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = hexCol;
+  ctx.lineWidth = 3;
+  const m = 96;
+  ctx.beginPath();
+  ctx.moveTo(m - 18, 24);
+  ctx.lineTo(m, 24);
+  ctx.moveTo(m, 24);
+  ctx.lineTo(m, 40);
+  ctx.moveTo(512 - m + 18, 24);
+  ctx.lineTo(512 - m, 24);
+  ctx.moveTo(512 - m, 24);
+  ctx.lineTo(512 - m, 40);
+  ctx.stroke();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 /** Energy-layer decal — concentric rings tinted to the part colour. */
 export function makeDecalTexture(color: number): THREE.Texture {
   const { c, ctx } = canvas(128);

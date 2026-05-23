@@ -28,6 +28,8 @@ export interface BeyVisual {
   accent: THREE.MeshStandardMaterial;
   aura: THREE.Mesh;
   auraMat: THREE.MeshBasicMaterial;
+  /** Counter-spinning ring of small additive sparkles around the bey. */
+  orbiters: THREE.Group;
   dispose(): void;
 }
 
@@ -460,13 +462,37 @@ export function buildBey(layer: EnergyLayer, disc: ForgeDisc, driver: Driver): B
   aura.scale.setScalar(2.4);
   root.add(aura);
 
-  const materials = [...layerB.materials, ...discB.materials, ...driverB.materials, accent, auraMat];
+  // Counter-spinning orbital ring of sparkles around the bey.
+  const orbiters = new THREE.Group();
+  const orbMat = new THREE.MeshBasicMaterial({
+    color: TYPE_COLOR[driver.type],
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    opacity: 0.85,
+  });
+  const orbGeo = new THREE.SphereGeometry(0.09, 8, 8);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const o = new THREE.Mesh(orbGeo, orbMat);
+    o.position.set(Math.cos(a) * 1.28, -0.16, Math.sin(a) * 1.28);
+    orbiters.add(o);
+  }
+  root.add(orbiters);
+
+  // Every part mesh casts shadows.
+  spinner.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.castShadow = true;
+  });
+
+  const materials = [...layerB.materials, ...discB.materials, ...driverB.materials, accent, auraMat, orbMat];
   const geometries = [
     ...layerB.geometries,
     ...discB.geometries,
     ...driverB.geometries,
     accentGeo,
     auraGeo,
+    orbGeo,
   ];
 
   return {
@@ -478,6 +504,7 @@ export function buildBey(layer: EnergyLayer, disc: ForgeDisc, driver: Driver): B
     accent,
     aura,
     auraMat,
+    orbiters,
     dispose(): void {
       for (const g of geometries) g.dispose();
       for (const m of materials) {
