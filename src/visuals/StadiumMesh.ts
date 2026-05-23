@@ -14,7 +14,7 @@ import {
   makeRockTexture,
   makeSkyTexture,
 } from './textures';
-import { AmbientMotes } from './AmbientMotes';
+import { AmbientMotes, type MotesOpts } from './AmbientMotes';
 
 export interface StadiumVisual {
   group: THREE.Group;
@@ -194,9 +194,20 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
     metalness: 0.55,
     roughness: 0.45,
   });
+  // Volumetric light beam shooting upward from each pillar — additive cone.
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: cfg.palette.accent,
+    transparent: true,
+    opacity: cfg.kind === 'lava' ? 0.22 : 0.16,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
   const pillarBaseGeo = new THREE.CylinderGeometry(0.55, 0.75, 0.6, 10);
   const pillarTrunkGeo = new THREE.CylinderGeometry(0.32, 0.42, 5.4, 10);
   const pillarCapGeo = new THREE.SphereGeometry(0.5, 14, 10);
+  const beamGeo = new THREE.CylinderGeometry(1.4, 0.16, 22, 14, 1, true);
   const PILLAR_RADIUS = BALANCE.bowlRadius + 3.8;
   const PILLAR_COUNT = 8;
   for (let i = 0; i < PILLAR_COUNT; i++) {
@@ -213,8 +224,12 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
     const cap = new THREE.Mesh(pillarCapGeo, pillarGlowMat);
     cap.position.set(x, baseY + 5.8, z);
     group.add(cap);
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.position.set(x, baseY + 5.8 + 11, z);
+    beam.renderOrder = 2;
+    group.add(beam);
   }
-  disposables.push(pillarBaseGeo, pillarTrunkGeo, pillarCapGeo, pillarRingMat, pillarGlowMat);
+  disposables.push(pillarBaseGeo, pillarTrunkGeo, pillarCapGeo, beamGeo, pillarRingMat, pillarGlowMat, beamMat);
 
   // --- Spikes (Spiked Pit only). --------------------------------------------
   let spikes: THREE.InstancedMesh | null = null;
@@ -224,8 +239,20 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
     disposables.push(spikes.geometry, spikes.material as THREE.Material);
   }
 
-  // --- Ambient motes drifting in the air. -----------------------------------
-  const motes = new AmbientMotes(cfg.palette.accent);
+  // --- Per-stadium weather — snow / embers / dust / sparkles. ---------------
+  const moteOpts: MotesOpts = (() => {
+    switch (cfg.kind) {
+      case 'ice':
+        return { color: 0xd6ecff, count: 240, size: 0.32, opacity: 0.85, vYDir: -1, vYSpeed: 0.7, hSpeed: 0.25 };
+      case 'lava':
+        return { color: 0xff8a2a, count: 240, size: 0.4, opacity: 0.95, vYDir: 1, vYSpeed: 0.55, hSpeed: 0.3 };
+      case 'spiked':
+        return { color: 0xc69d5a, count: 200, size: 0.3, opacity: 0.55, vYDir: -1, vYSpeed: 0.25, hSpeed: 0.4 };
+      default:
+        return { color: cfg.palette.accent, count: 160, size: 0.34, opacity: 0.65, vYDir: 1, vYSpeed: 0.18, hSpeed: 0.35 };
+    }
+  })();
+  const motes = new AmbientMotes(moteOpts);
   group.add(motes.points);
   disposables.push(motes);
 
