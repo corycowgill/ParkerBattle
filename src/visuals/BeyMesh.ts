@@ -1,6 +1,7 @@
 // Procedural bey geometry. A bey is three stacked parts (Energy Layer / Forge
 // Disc / Driver). Every part *style* builds its own distinct silhouette from
-// primitives — no two layers, discs or drivers share a shape.
+// primitives — no two layers, discs or drivers share a shape, and each gets
+// a few hand-placed emissive accents that pop hard under bloom.
 //
 // Structure:  root (position + tilt) -> spinner (Y spin) -> the three parts,
 //             plus a flat energy aura on `root`.
@@ -81,7 +82,15 @@ function buildLayer(layer: EnergyLayer): PartBuild {
     emissiveIntensity: 0.3,
   });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x20242f, metalness: 0.85, roughness: 0.34 });
-  const materials: THREE.Material[] = [baseMat, trimMat, darkMat];
+  // Bright emissive accent — for jewels, glow rings, crown gems.
+  const jewelMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: layer.color,
+    emissiveIntensity: 2.6,
+    metalness: 0.2,
+    roughness: 0.2,
+  });
+  const materials: THREE.Material[] = [baseMat, trimMat, darkMat, jewelMat];
   const geometries: THREE.BufferGeometry[] = [];
 
   const place = (geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh => {
@@ -90,7 +99,6 @@ function buildLayer(layer: EnergyLayer): PartBuild {
     group.add(m);
     return m;
   };
-  // A geometry shared across N copies — registered for disposal just once.
   const shared = (geo: THREE.BufferGeometry): THREE.BufferGeometry => {
     geometries.push(geo);
     return geo;
@@ -108,6 +116,14 @@ function buildLayer(layer: EnergyLayer): PartBuild {
         group.add(m);
       }
       place(new THREE.CylinderGeometry(0.42, 0.46, 0.18, 6), trimMat).position.y = 0.44;
+      // Three jewels inset in the hex hub.
+      const jewel = shared(new THREE.SphereGeometry(0.1, 12, 10));
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * TAU + Math.PI / 6;
+        const m = new THREE.Mesh(jewel, jewelMat);
+        m.position.set(Math.cos(a) * 0.24, 0.51, Math.sin(a) * 0.24);
+        group.add(m);
+      }
       break;
     }
     case 'blaze': {
@@ -118,14 +134,20 @@ function buildLayer(layer: EnergyLayer): PartBuild {
         const fin = new THREE.Group();
         const blade = new THREE.Mesh(finBlade, trimMat);
         blade.position.x = 0.31;
-        blade.rotation.z = 0.34; // sharp upward rake
+        blade.rotation.z = 0.34;
         const tip = new THREE.Mesh(finTip, trimMat);
         tip.position.set(0.78, 0.16, 0);
         tip.rotation.z = -Math.PI / 2;
         fin.add(blade, tip);
-        radial(fin, 0.58, (i / layer.blades) * TAU, 0.24, 0.5); // swept back
+        radial(fin, 0.58, (i / layer.blades) * TAU, 0.24, 0.5);
         group.add(fin);
       }
+      // Underside glow ring + crown spike of fire.
+      const under = place(new THREE.TorusGeometry(0.66, 0.05, 8, 28), jewelMat);
+      under.rotation.x = Math.PI / 2;
+      under.position.y = 0.08;
+      const crown = place(new THREE.ConeGeometry(0.18, 0.5, 6), jewelMat);
+      crown.position.y = 0.55;
       break;
     }
     case 'aegis': {
@@ -140,21 +162,31 @@ function buildLayer(layer: EnergyLayer): PartBuild {
       const dome = place(new THREE.SphereGeometry(0.6, 20, 12), trimMat);
       dome.position.y = 0.4;
       dome.scale.y = 0.5;
+      // Glowing ring around the dome base + a top eye.
+      const ring = place(new THREE.TorusGeometry(0.55, 0.05, 8, 28), jewelMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.4;
+      place(new THREE.SphereGeometry(0.14, 14, 10), jewelMat).position.y = 0.58;
       break;
     }
     case 'glide': {
       place(new THREE.CylinderGeometry(0.58, 0.55, 0.16, 22), baseMat).position.y = 0.2;
       const wing = shared(new THREE.BoxGeometry(0.95, 0.07, 0.22));
+      const wingTip = shared(new THREE.SphereGeometry(0.1, 10, 8));
       for (let i = 0; i < layer.blades; i++) {
         const w = new THREE.Group();
         const blade = new THREE.Mesh(wing, trimMat);
         blade.position.x = 0.47;
         blade.rotation.z = 0.12;
-        w.add(blade);
-        radial(w, 0.52, (i / layer.blades) * TAU, 0.2, 0.62); // long swept wings
+        const tip = new THREE.Mesh(wingTip, jewelMat);
+        tip.position.set(0.94, 0.18, 0);
+        w.add(blade, tip);
+        radial(w, 0.52, (i / layer.blades) * TAU, 0.2, 0.62);
         group.add(w);
       }
       place(new THREE.ConeGeometry(0.26, 0.3, 16), trimMat).position.y = 0.4;
+      // Central pilot light.
+      place(new THREE.SphereGeometry(0.12, 12, 10), jewelMat).position.y = 0.52;
       break;
     }
     case 'storm': {
@@ -165,11 +197,15 @@ function buildLayer(layer: EnergyLayer): PartBuild {
         const m = new THREE.Mesh(spike, trimMat);
         m.rotation.z = -Math.PI / 2;
         m.position.x = 0.42;
-        m.rotation.y = i % 2 ? 0.5 : -0.5; // jagged alternation
+        m.rotation.y = i % 2 ? 0.5 : -0.5;
         s.add(m);
         radial(s, 0.62, (i / layer.blades) * TAU, i % 2 ? 0.32 : 0.16, 0.2);
         group.add(s);
       }
+      // Crown crystal — a faceted gem at the centre.
+      const gem = place(new THREE.OctahedronGeometry(0.28, 0), jewelMat);
+      gem.position.y = 0.5;
+      gem.rotation.y = Math.PI / 4;
       break;
     }
     case 'bastion': {
@@ -183,6 +219,8 @@ function buildLayer(layer: EnergyLayer): PartBuild {
         group.add(m);
       }
       place(new THREE.CylinderGeometry(0.55, 0.6, 0.2, 8), darkMat).position.y = 0.45;
+      // Glowing inner reactor core peeking through.
+      place(new THREE.CylinderGeometry(0.36, 0.36, 0.5, 14), jewelMat).position.y = 0.5;
       break;
     }
   }
@@ -204,7 +242,15 @@ function buildDisc(disc: ForgeDisc): PartBuild {
   const group = new THREE.Group();
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3a3f55, metalness: 0.92, roughness: 0.26 });
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x767f9e, metalness: 0.95, roughness: 0.2 });
-  const materials: THREE.Material[] = [bodyMat, trimMat];
+  // Cyan accent gem — a single bright dot in the hub.
+  const gemMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0x2ff3d6,
+    emissiveIntensity: 2.4,
+    metalness: 0.2,
+    roughness: 0.25,
+  });
+  const materials: THREE.Material[] = [bodyMat, trimMat, gemMat];
   const geometries: THREE.BufferGeometry[] = [];
   const TAU = Math.PI * 2;
 
@@ -229,6 +275,8 @@ function buildDisc(disc: ForgeDisc): PartBuild {
         m.position.set(Math.cos(a) * 0.55, -0.04, Math.sin(a) * 0.55);
         group.add(m);
       }
+      // Hub gem.
+      place(new THREE.SphereGeometry(0.13, 14, 10), gemMat).position.y = -0.04;
       break;
     }
     case 'light': {
@@ -244,6 +292,7 @@ function buildDisc(disc: ForgeDisc): PartBuild {
         n.position.set(Math.cos(a) * 0.88, -0.04, Math.sin(a) * 0.88);
         group.add(n);
       }
+      place(new THREE.SphereGeometry(0.13, 14, 10), gemMat).position.y = -0.04;
       break;
     }
     case 'heavy': {
@@ -256,6 +305,7 @@ function buildDisc(disc: ForgeDisc): PartBuild {
         m.scale.set(1, 0.7, 1);
         group.add(m);
       }
+      place(new THREE.SphereGeometry(0.15, 14, 10), gemMat).position.y = -0.04;
       break;
     }
     case 'wide': {
@@ -264,6 +314,7 @@ function buildDisc(disc: ForgeDisc): PartBuild {
       flange.rotation.x = Math.PI / 2;
       flange.position.y = -0.04;
       place(new THREE.CylinderGeometry(0.4, 0.4, 0.26, 18), trimMat).position.y = -0.02;
+      place(new THREE.SphereGeometry(0.16, 14, 10), gemMat).position.y = 0.02;
       break;
     }
   }
@@ -285,7 +336,14 @@ function buildDriver(driver: Driver): PartBuild {
   });
   const collarMat = new THREE.MeshStandardMaterial({ color: 0x2a2e3e, metalness: 0.82, roughness: 0.38 });
   const rubberMat = new THREE.MeshStandardMaterial({ color: 0x101016, metalness: 0.05, roughness: 0.95 });
-  const materials: THREE.Material[] = [tipMat, collarMat, rubberMat];
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: 0x0c0c14,
+    emissive: color,
+    emissiveIntensity: 2.0,
+    metalness: 0.3,
+    roughness: 0.35,
+  });
+  const materials: THREE.Material[] = [tipMat, collarMat, rubberMat, glowMat];
   const geometries: THREE.BufferGeometry[] = [];
 
   const place = (geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh => {
@@ -295,8 +353,11 @@ function buildDriver(driver: Driver): PartBuild {
     return m;
   };
 
-  // Shared collar joining the tip to the disc above.
+  // Shared collar joining the tip to the disc above, with a glowing belt.
   place(new THREE.CylinderGeometry(0.34, 0.34, 0.16, 16), collarMat).position.y = -0.16;
+  const belt = place(new THREE.TorusGeometry(0.34, 0.035, 8, 22), glowMat);
+  belt.rotation.x = Math.PI / 2;
+  belt.position.y = -0.16;
 
   switch (driver.style) {
     case 'balance': {

@@ -1,15 +1,20 @@
 // Procedural stadium meshes. The bowl is a lathed parabola; each stadium kind
-// swaps in its own material treatment and decoration:
-//   smooth  - neutral rough rock
-//   spiked  - rock + an InstancedMesh field of bobbing spikes
-//   lava    - dark rock with an animated glowing emissive crack map
-//   ice     - glossy low-roughness surface picking up the environment map
+// swaps in its own material treatment and decoration; every stadium also gets
+// a sky dome, an animated tech-medallion floor, light pillars around the rim,
+// and a drifting cloud of ambient motes — to fill the world and sell the scale.
 
 import * as THREE from 'three';
 import type { StadiumConfig } from '../core/types';
 import { BALANCE } from '../data/balance';
 import { bowlSurfaceY } from '../core/arena';
-import { makeIceTexture, makeLavaTexture, makeRockTexture } from './textures';
+import {
+  makeGridTexture,
+  makeIceTexture,
+  makeLavaTexture,
+  makeRockTexture,
+  makeSkyTexture,
+} from './textures';
+import { AmbientMotes } from './AmbientMotes';
 
 export interface StadiumVisual {
   group: THREE.Group;
@@ -111,18 +116,48 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
   const group = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
 
-  // Bowl.
+  // --- Sky dome (per-stadium tinted, fog-immune). ---------------------------
+  const skyTex = makeSkyTexture(cfg.palette);
+  const skyMat = new THREE.MeshBasicMaterial({
+    map: skyTex,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+  });
+  const skyGeo = new THREE.SphereGeometry(82, 40, 24);
+  const sky = new THREE.Mesh(skyGeo, skyMat);
+  sky.renderOrder = -10;
+  group.add(sky);
+  disposables.push(skyGeo, skyMat, skyTex);
+
+  // --- Bowl. ----------------------------------------------------------------
   const bowlGeo = new THREE.LatheGeometry(bowlProfile(), 72);
   const { mat: bowlMat, map: bowlMap } = bowlMaterial(cfg);
   const bowl = new THREE.Mesh(bowlGeo, bowlMat);
   group.add(bowl);
   disposables.push(bowlGeo, bowlMat, bowlMap);
 
-  // Rim ring.
+  // --- Animated tech-medallion on the bowl floor centre. --------------------
+  const gridTex = makeGridTexture(cfg.palette.accent);
+  const gridMat = new THREE.MeshBasicMaterial({
+    map: gridTex,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const gridGeo = new THREE.CircleGeometry(BALANCE.bowlRadius * 0.62, 56);
+  const grid = new THREE.Mesh(gridGeo, gridMat);
+  grid.rotation.x = -Math.PI / 2;
+  grid.position.y = 0.03;
+  group.add(grid);
+  disposables.push(gridGeo, gridMat, gridTex);
+
+  // --- Rim torus. -----------------------------------------------------------
   const rimMat = new THREE.MeshStandardMaterial({
     color: cfg.palette.rim,
     emissive: cfg.palette.accent,
-    emissiveIntensity: cfg.kind === 'lava' ? 0.5 : 0.18,
+    emissiveIntensity: cfg.kind === 'lava' ? 0.55 : 0.22,
     metalness: 0.7,
     roughness: 0.35,
   });
@@ -133,11 +168,11 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
   group.add(rim);
   disposables.push(rimGeo, rimMat);
 
-  // Outer ground so the bowl sits in a floor.
+  // --- Outer ground. --------------------------------------------------------
   const groundMat = new THREE.MeshStandardMaterial({
     color: cfg.palette.fog,
-    metalness: 0.1,
-    roughness: 0.95,
+    metalness: 0.18,
+    roughness: 0.88,
   });
   const groundGeo = new THREE.RingGeometry(BALANCE.bowlRadius + 0.9, 70, 48);
   const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -146,7 +181,42 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
   group.add(ground);
   disposables.push(groundGeo, groundMat);
 
-  // Spikes (spiked stadium only).
+  // --- Light pillars around the rim — emissive only, bloom does the glow. ---
+  const pillarRingMat = new THREE.MeshStandardMaterial({
+    color: cfg.palette.rim,
+    metalness: 0.85,
+    roughness: 0.32,
+  });
+  const pillarGlowMat = new THREE.MeshStandardMaterial({
+    color: 0x0c1018,
+    emissive: cfg.palette.accent,
+    emissiveIntensity: cfg.kind === 'lava' ? 2.2 : 1.5,
+    metalness: 0.55,
+    roughness: 0.45,
+  });
+  const pillarBaseGeo = new THREE.CylinderGeometry(0.55, 0.75, 0.6, 10);
+  const pillarTrunkGeo = new THREE.CylinderGeometry(0.32, 0.42, 5.4, 10);
+  const pillarCapGeo = new THREE.SphereGeometry(0.5, 14, 10);
+  const PILLAR_RADIUS = BALANCE.bowlRadius + 3.8;
+  const PILLAR_COUNT = 8;
+  for (let i = 0; i < PILLAR_COUNT; i++) {
+    const a = (i / PILLAR_COUNT) * Math.PI * 2 + Math.PI / PILLAR_COUNT;
+    const x = Math.cos(a) * PILLAR_RADIUS;
+    const z = Math.sin(a) * PILLAR_RADIUS;
+    const baseY = BALANCE.bowlDepth + 0.5;
+    const base = new THREE.Mesh(pillarBaseGeo, pillarRingMat);
+    base.position.set(x, baseY, z);
+    group.add(base);
+    const trunk = new THREE.Mesh(pillarTrunkGeo, pillarGlowMat);
+    trunk.position.set(x, baseY + 2.9, z);
+    group.add(trunk);
+    const cap = new THREE.Mesh(pillarCapGeo, pillarGlowMat);
+    cap.position.set(x, baseY + 5.8, z);
+    group.add(cap);
+  }
+  disposables.push(pillarBaseGeo, pillarTrunkGeo, pillarCapGeo, pillarRingMat, pillarGlowMat);
+
+  // --- Spikes (Spiked Pit only). --------------------------------------------
   let spikes: THREE.InstancedMesh | null = null;
   if (cfg.kind === 'spiked') {
     spikes = buildSpikes(cfg);
@@ -154,8 +224,13 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
     disposables.push(spikes.geometry, spikes.material as THREE.Material);
   }
 
-  // Accent fill light low in the bowl.
-  const light = new THREE.PointLight(cfg.palette.accent, cfg.kind === 'lava' ? 26 : 10, 46, 2);
+  // --- Ambient motes drifting in the air. -----------------------------------
+  const motes = new AmbientMotes(cfg.palette.accent);
+  group.add(motes.points);
+  disposables.push(motes);
+
+  // --- Accent fill light low in the bowl. -----------------------------------
+  const light = new THREE.PointLight(cfg.palette.accent, cfg.kind === 'lava' ? 26 : 10, 50, 2);
   light.position.set(0, 2.4, 0);
   group.add(light);
 
@@ -165,15 +240,22 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
   return {
     group,
     light,
-    update(_dt: number, time: number): void {
+    update(dt: number, time: number): void {
+      // Tech-medallion rotates slowly — a constant low-energy idle.
+      gridTex.rotation = time * 0.18;
+
       if (lavaMat) {
-        lavaMat.emissiveIntensity = 0.78 + Math.sin(time * 2.1) * 0.28;
+        lavaMat.emissiveIntensity = 0.82 + Math.sin(time * 2.1) * 0.3;
         if (lavaMat.emissiveMap) {
           lavaMat.emissiveMap.offset.x = (time * 0.018) % 1;
           lavaMat.emissiveMap.offset.y = (time * 0.012) % 1;
         }
         light.intensity = 22 + Math.sin(time * 3.0) * 7;
+      } else {
+        // Subtle breathing pulse on the pillar emissives.
+        pillarGlowMat.emissiveIntensity = 1.5 + Math.sin(time * 1.3) * 0.3;
       }
+
       if (spikes) {
         const bases = spikes.userData.bases as { x: number; z: number; y: number; phase: number }[];
         for (let i = 0; i < bases.length; i++) {
@@ -186,6 +268,8 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
         }
         spikes.instanceMatrix.needsUpdate = true;
       }
+
+      motes.update(dt);
     },
     dispose(): void {
       for (const d of disposables) d.dispose();

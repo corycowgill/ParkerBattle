@@ -156,6 +156,138 @@ export function makeAuraTexture(): THREE.Texture {
   return tex;
 }
 
+function hex(color: number, alpha = 1): string {
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8) & 0xff;
+  const b = color & 0xff;
+  return alpha === 1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${alpha})`;
+}
+
+function mix(a: number, b: number, t: number): string {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  return `rgb(${Math.round(ar + (br - ar) * t)},${Math.round(ag + (bg - ag) * t)},${Math.round(ab + (bb - ab) * t)})`;
+}
+
+/** Equirectangular sky dome — gradient + horizon glow + stars (when dark). */
+export function makeSkyTexture(palette: { fog: number; accent: number }): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 512;
+  const ctx = c.getContext('2d')!;
+
+  // Vertical gradient: deep zenith -> base -> warm horizon.
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, mix(palette.fog, 0x000000, 0.55));
+  g.addColorStop(0.55, hex(palette.fog));
+  g.addColorStop(0.85, mix(palette.fog, palette.accent, 0.45));
+  g.addColorStop(1, mix(palette.fog, palette.accent, 0.7));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 1024, 512);
+
+  // Horizon glow band.
+  const glow = ctx.createLinearGradient(0, 320, 0, 512);
+  glow.addColorStop(0, hex(palette.accent, 0));
+  glow.addColorStop(1, hex(palette.accent, 0.55));
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 320, 1024, 192);
+
+  // Stars in the upper hemisphere — denser at the zenith.
+  for (let i = 0; i < 420; i++) {
+    const x = Math.random() * 1024;
+    const y = Math.random() * 320;
+    const a = (1 - y / 320) * (0.4 + Math.random() * 0.6);
+    ctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+    const r = Math.random() < 0.06 ? 1.4 + Math.random() * 1.2 : Math.random() * 1.1;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // A handful of brighter "feature" stars with a soft halo.
+  for (let i = 0; i < 18; i++) {
+    const x = Math.random() * 1024;
+    const y = Math.random() * 260;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, 8);
+    grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - 8, y - 8, 16, 16);
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  return tex;
+}
+
+/** Concentric ring + spoke "tech medallion" for the bowl floor centre. */
+export function makeGridTexture(accent: number): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 512;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, 512, 512);
+  ctx.strokeStyle = hex(accent);
+  ctx.lineCap = 'round';
+
+  // Concentric rings.
+  for (let r = 60; r <= 240; r += 36) {
+    ctx.lineWidth = r === 240 ? 4 : 2;
+    ctx.globalAlpha = 0.55 - (r / 240) * 0.25;
+    ctx.beginPath();
+    ctx.arc(256, 256, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Radial spokes — long ones every 30°, short ticks in between.
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(256 + Math.cos(a) * 90, 256 + Math.sin(a) * 90);
+    ctx.lineTo(256 + Math.cos(a) * 240, 256 + Math.sin(a) * 240);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2 + Math.PI / 24;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(256 + Math.cos(a) * 200, 256 + Math.sin(a) * 200);
+    ctx.lineTo(256 + Math.cos(a) * 240, 256 + Math.sin(a) * 240);
+    ctx.stroke();
+  }
+
+  // Centre hot spot.
+  ctx.globalAlpha = 1;
+  const dot = ctx.createRadialGradient(256, 256, 0, 256, 256, 56);
+  dot.addColorStop(0, hex(accent, 0.95));
+  dot.addColorStop(0.5, hex(accent, 0.35));
+  dot.addColorStop(1, hex(accent, 0));
+  ctx.fillStyle = dot;
+  ctx.fillRect(196, 196, 120, 120);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.center.set(0.5, 0.5);
+  return tex;
+}
+
+/** Tiny mote sprite — soft dot for the ambient floating particles. */
+export function makeMoteTexture(): THREE.Texture {
+  const { c, ctx } = canvas(32);
+  const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 32, 32);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 /** Energy-layer decal — concentric rings tinted to the part colour. */
 export function makeDecalTexture(color: number): THREE.Texture {
   const { c, ctx } = canvas(128);
