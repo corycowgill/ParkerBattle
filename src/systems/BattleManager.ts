@@ -132,6 +132,12 @@ export class BattleManager {
     }
   }
 
+  /** Set the player's active steer vector (world XZ, magnitude clamped 0..1). */
+  setPlayerSteer(x: number, z: number): void {
+    this.player.steerInput.x = x;
+    this.player.steerInput.z = z;
+  }
+
   /** Returns true if the Special actually fired. */
   triggerPlayerSpecial(): boolean {
     if (this.phase !== 'battle' || !this.player.triggerSpecial()) return false;

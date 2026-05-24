@@ -57,15 +57,20 @@ export function resolveClash(a: Bey, b: Bey, stadium: StadiumConfig, fx: CombatE
   const impact = Math.max(closing, relSpeed * 0.4);
   if (impact < BALANCE.minHitSpeed) return;
 
+  // Per-side bias — the player gets a small built-in advantage so wins feel
+  // achievable. The attacker's bias scales both their damage and knockback.
+  const aBias = a.side === 'player' ? BALANCE.playerCombatBonus : BALANCE.enemyCombatBonus;
+  const bBias = b.side === 'player' ? BALANCE.playerCombatBonus : BALANCE.enemyCombatBonus;
+
   // Mutual damage.
-  const dmgToB = damage(a, b, stadium, impact);
-  const dmgToA = damage(b, a, stadium, impact);
+  const dmgToB = damage(a, b, stadium, impact) * aBias;
+  const dmgToA = damage(b, a, stadium, impact) * bBias;
   b.takeDamage(dmgToB, dmgToB * BALANCE.burstK);
   a.takeDamage(dmgToA, dmgToA * BALANCE.burstK);
 
   // Knockback, pushing the beys apart along the contact normal.
-  const kbToB = knockback(a, b, impact);
-  const kbToA = knockback(b, a, impact);
+  const kbToB = knockback(a, b, impact) * aBias;
+  const kbToA = knockback(b, a, impact) * bBias;
   b.push(nx * kbToB, nz * kbToB);
   a.push(-nx * kbToA, -nz * kbToA);
 

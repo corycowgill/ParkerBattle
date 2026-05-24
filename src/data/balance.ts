@@ -40,9 +40,15 @@ export const BALANCE = {
   // --- Burst ---
   burstMeterMax: 100,
   /** Burst meter gained per point of damage taken. */
-  burstK: 0.78,
+  burstK: 1.15,
   /** Burst meter bled off per second when not being hit. */
-  burstDecayPerSec: 3.2,
+  burstDecayPerSec: 2.4,
+
+  // --- Player advantage (the player hits a bit harder, takes a bit less) ---
+  playerCombatBonus: 1.12,
+  enemyCombatBonus: 0.9,
+  /** How hard the player's drag steer pushes their bey. */
+  playerSteerForce: 18,
 
   // --- Launch ---
   launchSpeedMin: 4.5,

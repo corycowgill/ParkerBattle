@@ -57,6 +57,9 @@ export class Bey {
    *  this so damage uses the true impact speed, not the post-bounce speed. */
   readonly prevVel = { x: 0, z: 0 };
 
+  /** External steer input from the player's drag, applied in applyForces. */
+  readonly steerInput = { x: 0, z: 0 };
+
   private specialTimer = 0;
   private specialPulse = 0;
   private wanderAngle = Math.random() * TAU;
@@ -262,6 +265,10 @@ export class Bey {
     const wander = this.driver.wander * dt;
     this.impulse.x += Math.cos(this.wanderAngle) * wander;
     this.impulse.y += Math.sin(this.wanderAngle) * wander;
+
+    // External steer input — the player drags to nudge their bey.
+    this.impulse.x += this.steerInput.x * BALANCE.playerSteerForce * dt;
+    this.impulse.y += this.steerInput.z * BALANCE.playerSteerForce * dt;
 
     // Stadium: random destabilising bumps (Spiked Pit).
     if (stadium.bumpForce > 0) {

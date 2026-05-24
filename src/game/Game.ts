@@ -235,6 +235,14 @@ export class Game {
         this.audio.click();
         this.continueFromResult();
       },
+      onRematch: () => {
+        this.audio.click();
+        if (this.battle) {
+          this.battle.dispose();
+          this.battle = null;
+        }
+        this.startBattle(this.opponentIndex);
+      },
       onToggleMute: () => {
         this.muted = !this.muted;
         this.audio.setMuted(this.muted);
@@ -251,12 +259,30 @@ export class Game {
   }
 
   private wireInput(): void {
+    const isBattlePhase = (): boolean => this.battle?.phase === 'battle';
+
     this.input.onDown = () => {
       this.audio.unlock();
-      this.launch.pointerDown();
+      if (isBattlePhase()) {
+        this.updateSteer();
+      } else {
+        this.launch.pointerDown();
+      }
     };
-    this.input.onMove = () => this.launch.pointerMove(this.input.dragX);
-    this.input.onUp = (release) => this.launch.pointerUp(release);
+    this.input.onMove = () => {
+      if (isBattlePhase() && this.input.isDown) {
+        this.updateSteer();
+      } else {
+        this.launch.pointerMove(this.input.dragX);
+      }
+    };
+    this.input.onUp = (release) => {
+      if (isBattlePhase()) {
+        this.battle?.setPlayerSteer(0, 0);
+      } else {
+        this.launch.pointerUp(release);
+      }
+    };
     this.input.onSpaceChange = (down) => this.launch.spaceChange(down);
 
     this.launch.onLaunch = (params) => {
@@ -264,6 +290,23 @@ export class Game {
       this.launch.end();
       this.ui.setLaunchVisible(false);
     };
+  }
+
+  /** Map the current drag vector to a clamped steer for the player's bey. */
+  private updateSteer(): void {
+    if (!this.battle) return;
+    const dx = this.input.dragX;
+    const dy = this.input.dragY;
+    const len = Math.hypot(dx, dy);
+    if (len < 12) {
+      this.battle.setPlayerSteer(0, 0);
+      return;
+    }
+    const MAX = 160;
+    const m = Math.min(len / MAX, 1);
+    const nx = (dx / len) * m;
+    const nz = (dy / len) * m;
+    this.battle.setPlayerSteer(nx, nz);
   }
 
   // --- Menu showcase scene ----------------------------------------------

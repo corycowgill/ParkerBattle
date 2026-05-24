@@ -23,6 +23,7 @@ export interface UICallbacks {
   onEquipDone(): void;
   onSpecial(): void;
   onContinue(): void;
+  onRematch(): void;
   onToggleMute(): void;
   onResetSave(): void;
 }
@@ -368,6 +369,10 @@ export class UI {
         <div class="muted">Re-spec in the Garage — read the stadium and the type triangle.</div>`;
     }
     s.appendChild(panel);
+
+    const rematch = el('button', 'btn', 'REMATCH');
+    rematch.addEventListener('click', () => this.cb.onRematch());
+    s.appendChild(rematch);
 
     const cont = el('button', 'btn btn-primary', 'CONTINUE');
     cont.addEventListener('click', () => this.cb.onContinue());
