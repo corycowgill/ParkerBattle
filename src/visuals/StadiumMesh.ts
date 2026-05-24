@@ -13,6 +13,7 @@ import {
   makeLavaTexture,
   makeRockTexture,
   makeSkyTexture,
+  makeStadiumNameTexture,
 } from './textures';
 import { AmbientMotes, type MotesOpts } from './AmbientMotes';
 
@@ -244,6 +245,36 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
     disposables.push(spikes.geometry, spikes.material as THREE.Material);
   }
 
+  // --- Holographic containment ring floating above the arena. ---------------
+  const containmentMat = new THREE.MeshBasicMaterial({
+    color: cfg.palette.accent,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+  });
+  const containmentGeo = new THREE.TorusGeometry(BALANCE.bowlRadius + 0.3, 0.09, 14, 96);
+  const containment = new THREE.Mesh(containmentGeo, containmentMat);
+  containment.rotation.x = Math.PI / 2;
+  containment.position.y = BALANCE.bowlDepth + 7;
+  group.add(containment);
+  disposables.push(containmentGeo, containmentMat);
+
+  // --- Sky banner showing the stadium name. ---------------------------------
+  const nameTex = makeStadiumNameTexture(cfg.name, cfg.palette.accent);
+  const nameMat = new THREE.SpriteMaterial({
+    map: nameTex,
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+  });
+  const nameSprite = new THREE.Sprite(nameMat);
+  nameSprite.scale.set(10, 2.5, 1);
+  nameSprite.position.set(0, BALANCE.bowlDepth + 10, 0);
+  group.add(nameSprite);
+  disposables.push(nameMat, nameTex);
+
   // --- Per-stadium weather — snow / embers / dust / sparkles. ---------------
   const moteOpts: MotesOpts = (() => {
     switch (cfg.kind) {
@@ -275,6 +306,13 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
     update(dt: number, time: number): void {
       // Tech-medallion rotates slowly — a constant low-energy idle.
       gridTex.rotation = time * 0.18;
+
+      // Containment ring breathes vertically + pulses opacity.
+      containment.position.y = BALANCE.bowlDepth + 7 + Math.sin(time * 0.6) * 0.4;
+      containmentMat.opacity = 0.35 + Math.sin(time * 1.7) * 0.2;
+
+      // Stadium banner bobs in place.
+      nameSprite.position.y = BALANCE.bowlDepth + 10 + Math.sin(time * 0.45) * 0.25;
 
       if (lavaMat) {
         lavaMat.emissiveIntensity = 0.82 + Math.sin(time * 2.1) * 0.3;

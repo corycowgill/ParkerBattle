@@ -30,6 +30,9 @@ export interface BeyVisual {
   auraMat: THREE.MeshBasicMaterial;
   /** Counter-spinning ring of small additive sparkles around the bey. */
   orbiters: THREE.Group;
+  /** Expanding pulse ring shown while a Special is active. */
+  specialRing: THREE.Mesh;
+  specialRingMat: THREE.MeshBasicMaterial;
   dispose(): void;
 }
 
@@ -462,6 +465,22 @@ export function buildBey(layer: EnergyLayer, disc: ForgeDisc, driver: Driver): B
   aura.scale.setScalar(2.4);
   root.add(aura);
 
+  // Pulse ring shown while a Special is active — Bey drives scale + opacity.
+  const specialRingMat = new THREE.MeshBasicMaterial({
+    color: TYPE_COLOR[driver.type],
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+    opacity: 0,
+  });
+  const specialRingGeo = new THREE.TorusGeometry(1.0, 0.07, 10, 36);
+  const specialRing = new THREE.Mesh(specialRingGeo, specialRingMat);
+  specialRing.rotation.x = -Math.PI / 2;
+  specialRing.position.y = -0.3;
+  specialRing.visible = false;
+  root.add(specialRing);
+
   // Counter-spinning orbital ring of sparkles around the bey.
   const orbiters = new THREE.Group();
   const orbMat = new THREE.MeshBasicMaterial({
@@ -485,7 +504,7 @@ export function buildBey(layer: EnergyLayer, disc: ForgeDisc, driver: Driver): B
     if (o instanceof THREE.Mesh) o.castShadow = true;
   });
 
-  const materials = [...layerB.materials, ...discB.materials, ...driverB.materials, accent, auraMat, orbMat];
+  const materials = [...layerB.materials, ...discB.materials, ...driverB.materials, accent, auraMat, orbMat, specialRingMat];
   const geometries = [
     ...layerB.geometries,
     ...discB.geometries,
@@ -493,6 +512,7 @@ export function buildBey(layer: EnergyLayer, disc: ForgeDisc, driver: Driver): B
     accentGeo,
     auraGeo,
     orbGeo,
+    specialRingGeo,
   ];
 
   return {
@@ -505,6 +525,8 @@ export function buildBey(layer: EnergyLayer, disc: ForgeDisc, driver: Driver): B
     aura,
     auraMat,
     orbiters,
+    specialRing,
+    specialRingMat,
     dispose(): void {
       for (const g of geometries) g.dispose();
       for (const m of materials) {

@@ -58,6 +58,7 @@ export class Bey {
   readonly prevVel = { x: 0, z: 0 };
 
   private specialTimer = 0;
+  private specialPulse = 0;
   private wanderAngle = Math.random() * TAU;
   private bumpTimer = rand(0.2, 0.6);
   private wobblePhase = Math.random() * TAU;
@@ -451,6 +452,17 @@ export class Bey {
     if (this.alive) {
       this.visual.orbiters.rotation.y += dt * 2.8 * -this.spinSign;
       this.visual.orbiters.position.y = Math.sin(time * 2.6 + this.handle) * 0.08;
+    }
+
+    // Special-active continuous pulse ring expanding outward + fading.
+    if (this.specialActive && this.alive) {
+      this.visual.specialRing.visible = true;
+      this.specialPulse = (this.specialPulse + dt * 1.6) % 1;
+      const s = 0.65 + this.specialPulse * 2.6;
+      this.visual.specialRing.scale.setScalar(s);
+      this.visual.specialRingMat.opacity = (1 - this.specialPulse) * (1 - this.specialPulse) * 0.9;
+    } else {
+      this.visual.specialRing.visible = false;
     }
 
     // Holographic name plate fades in while alive.

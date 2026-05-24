@@ -297,14 +297,20 @@ export function makeLabelTexture(text: string, color: number): THREE.Texture {
   ctx.clearRect(0, 0, 512, 128);
   const hexCol = '#' + color.toString(16).padStart(6, '0');
 
-  // Main text — white with a heavy coloured glow.
-  ctx.font = '700 56px "Orbitron", "Trebuchet MS", system-ui, sans-serif';
+  // Auto-fit longer names by shrinking the font.
+  const label = text.toUpperCase();
+  let fontSize = 56;
+  ctx.font = `700 ${fontSize}px "Orbitron", "Trebuchet MS", system-ui, sans-serif`;
+  while (ctx.measureText(label).width > 360 && fontSize > 28) {
+    fontSize -= 4;
+    ctx.font = `700 ${fontSize}px "Orbitron", "Trebuchet MS", system-ui, sans-serif`;
+  }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.shadowColor = hexCol;
   ctx.shadowBlur = 30;
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(text.toUpperCase(), 256, 56);
+  ctx.fillText(label, 256, 56);
 
   // Underline bar in the accent colour.
   ctx.shadowBlur = 16;
@@ -325,6 +331,50 @@ export function makeLabelTexture(text: string, color: number): THREE.Texture {
   ctx.lineTo(512 - m, 24);
   ctx.moveTo(512 - m, 24);
   ctx.lineTo(512 - m, 40);
+  ctx.stroke();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Big sky banner texture — the stadium name shown floating over the arena. */
+export function makeStadiumNameTexture(name: string, color: number): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 256;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, 1024, 256);
+  const hexCol = '#' + color.toString(16).padStart(6, '0');
+
+  // Outer top tag — "/// SPIN ARENA ///".
+  ctx.font = '700 28px "Orbitron", "Trebuchet MS", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = hexCol;
+  ctx.shadowColor = hexCol;
+  ctx.shadowBlur = 14;
+  ctx.fillText('/ / /   SPIN ARENA   / / /', 512, 38);
+
+  // Big stadium name.
+  ctx.font = '900 116px "Orbitron", "Trebuchet MS", system-ui, sans-serif';
+  ctx.shadowBlur = 36;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(name.toUpperCase(), 512, 134);
+
+  // Bold underline bar.
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = hexCol;
+  ctx.fillRect(180, 210, 664, 8);
+
+  // Corner brackets.
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = hexCol;
+  ctx.lineWidth = 4;
+  const m = 180;
+  ctx.beginPath();
+  ctx.moveTo(m - 28, 28); ctx.lineTo(m, 28); ctx.moveTo(m, 28); ctx.lineTo(m, 56);
+  ctx.moveTo(1024 - m + 28, 28); ctx.lineTo(1024 - m, 28); ctx.moveTo(1024 - m, 28); ctx.lineTo(1024 - m, 56);
   ctx.stroke();
 
   const tex = new THREE.CanvasTexture(c);

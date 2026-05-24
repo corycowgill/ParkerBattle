@@ -329,6 +329,8 @@ export class BattleManager {
       this.opts.audio.setHum(0.4 + energy * 0.6);
       this.emitTrail(this.player);
       this.emitTrail(this.enemy);
+      this.emitFrictionSparks(this.player);
+      this.emitFrictionSparks(this.enemy);
     }
   }
 
@@ -362,6 +364,22 @@ export class BattleManager {
       spread: 1.3,
       life: 0.45,
       drag: 2,
+    });
+  }
+
+  /** Friction sparks when a bey rides the bowl wall fast. */
+  private emitFrictionSparks(bey: Bey): void {
+    if (!bey.alive || bey.radius < BALANCE.bowlRadius * 0.82 || bey.speed < 4.5) return;
+    if (Math.random() > 0.35) return;
+    const t = bey.body.translation();
+    this.opts.particles.emit(t.x, bowlSurfaceY(bey.radius) + 0.32, t.z, {
+      count: 2,
+      color: 0xffd870,
+      speed: 4.2,
+      spread: 1.4,
+      life: 0.34,
+      rise: 1.6,
+      drag: 4,
     });
   }
 
