@@ -260,6 +260,30 @@ export function buildStadium(cfg: StadiumConfig): StadiumVisual {
   group.add(containment);
   disposables.push(containmentGeo, containmentMat);
 
+  // --- Vertical containment lattice — glowing bars between rim and ring. ----
+  const LATTICE_BOTTOM = BALANCE.bowlDepth + 0.4;
+  const LATTICE_TOP = BALANCE.bowlDepth + 7;
+  const LATTICE_LEN = LATTICE_TOP - LATTICE_BOTTOM;
+  const LATTICE_MID = (LATTICE_BOTTOM + LATTICE_TOP) / 2;
+  const LATTICE_COUNT = 14;
+  const LATTICE_RADIUS = BALANCE.bowlRadius + 0.55;
+  const latticeMat = new THREE.MeshBasicMaterial({
+    color: cfg.palette.accent,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+    opacity: 0.5,
+  });
+  const latticeGeo = new THREE.CylinderGeometry(0.06, 0.06, LATTICE_LEN, 6);
+  for (let i = 0; i < LATTICE_COUNT; i++) {
+    const a = (i / LATTICE_COUNT) * Math.PI * 2 + Math.PI / LATTICE_COUNT / 2;
+    const m = new THREE.Mesh(latticeGeo, latticeMat);
+    m.position.set(Math.cos(a) * LATTICE_RADIUS, LATTICE_MID, Math.sin(a) * LATTICE_RADIUS);
+    group.add(m);
+  }
+  disposables.push(latticeGeo, latticeMat);
+
   // --- Sky banner showing the stadium name. ---------------------------------
   const nameTex = makeStadiumNameTexture(cfg.name, cfg.palette.accent);
   const nameMat = new THREE.SpriteMaterial({
